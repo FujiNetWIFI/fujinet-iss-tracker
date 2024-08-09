@@ -1,2 +1,7 @@
 _libs/
 copy_libs.sh
+
+assets/*
+!assets/README.md
+
+altirra-debug.ini
