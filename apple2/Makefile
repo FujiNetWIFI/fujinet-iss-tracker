@@ -13,7 +13,7 @@ PROGRAM := iss
 #FUJINET-BUILD-TOOLS_DIR := ../../fujinet-build-tools
 
 export FUJINET_BUILD_TOOLS_DIR := ../
-export FUJINET_LIB_VERSION := 4.3.1
+export FUJINET_LIB_VERSION := 4.5.0
 
 
 # Check if FUJINET_BUILD_TOOLS_DIR is set to a real directory
