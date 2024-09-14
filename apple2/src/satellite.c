@@ -18,7 +18,8 @@
 #include <conio.h>
 #include <time.h>
 #include "satellite.h"
-#include "sp.h"
+
+#include "fujinet-network.h"
 
 extern unsigned char net; // Network device as found by sp_find_network()
 
@@ -120,73 +121,42 @@ unsigned char latitude[180] =
 8,7,6,5,4,3,2,1,0,0
 };
 
-const char url[]="N:HTTP://api.open-notify.org/iss-now.json";
+const char url[]="n:http://api.open-notify.org/iss-now.json";
 const char longitude_query[]="/iss_position/longitude";
 const char latitude_query[]="/iss_position/latitude";
 const char timestamp_query[]="/timestamp";
 
+uint8_t buffer[128];
+
 bool satellite_fetch(int *lon, int *lat, char *lon_s, char *lat_s, unsigned long *ts)
 {
-  unsigned short len;
+  // unsigned short len;
+  uint8_t err;
+  int16_t count;
   
-  memset(lon_s,0,16);
-  memset(lat_s,0,16);
+  memset(lon_s, 0, 16);
+  memset(lat_s, 0, 16);
+  memset(buffer, 0, 128);
   
-  // Open
-  sp_open(net);
-  sp_payload[0]=(strlen(url) & 0xFF) + 2;
-  sp_payload[1]=(strlen(url) >> 8);
-  sp_payload[2]=0x0C; // GET
-  sp_payload[3]=0x80; // No translation
-  memcpy(&sp_payload[4],url,strlen(url));
-  sp_control(net,'O'); // Do open.
+  err = network_open((char *) url, OPEN_MODE_HTTP_GET, OPEN_TRANS_NONE);
+  if (err != FN_ERR_OK) return false;
 
-  // Set channel mode
-  sp_payload[0]=0x01; // length of packet.
-  sp_payload[1]=0x00;
-  sp_payload[2]=0x01; // Set to JSON mode
-  sp_control(net,0xFC); // Do it.
+  err = network_json_parse((char *) url);
+  if (err != FN_ERR_OK) return false;
 
-  // Parse the JSON
-  sp_control(net,'P'); // Do the parse
+  count = network_json_query((char *) url, (char *) timestamp_query, (char *) buffer);
+  if (count <= 0) return false;
+  *ts = atol((char *) buffer);
 
-  // Query for timestamp
-  memset(sp_payload,0,sizeof(sp_payload));
-  sp_payload[0]=10;
-  sp_payload[1]=0;
-  strncpy(&sp_payload[2],timestamp_query,10);
-  sp_control(net,'Q'); // Query
-  sp_status(net,'S'); // Get Status
-  len=(unsigned short)sp_payload[0];
-  memset(sp_payload,0,sizeof(sp_payload));
-  sp_read(net,len); // Get Result
-  *ts=atol((const char *)&sp_payload[0]);
-  
-  // Query for Longitude
-  sp_payload[0]=24;
-  sp_payload[1]=0;
-  memcpy(&sp_payload[2],longitude_query,24);
-  sp_control(net,'Q'); // Query
-  sp_status(net,'S'); // Get status
-  len=(unsigned short)sp_payload[0]; // Get # of bytes waiting.
-  memset(sp_payload,0,sizeof(sp_payload));
-  sp_read(net,len); // Get result
-  memcpy(lon_s,sp_payload,len);
-  *lon=atoi(lon_s);
-  
-  // Query for Latitude
-  sp_payload[0]=23;
-  sp_payload[1]=0;
-  memcpy(&sp_payload[2],latitude_query,23);
-  sp_control(net,'Q'); // Query
-  sp_status(net,'S'); // Get status
-  len=(unsigned short)sp_payload[0]; // Get # of bytes waiting.
-  memset(sp_payload,0,sizeof(sp_payload));
-  sp_read(net,len); // Get result
-  memcpy(lat_s,sp_payload,len);
-  *lat=atoi(lat_s);
+  count = network_json_query((char *) url, (char *) longitude_query, (char *) lon_s);
+  if (count <= 0) return false;
+  *lon = atoi(lon_s);
 
-  sp_close(net);
+  count = network_json_query((char *) url, (char *) latitude_query, (char *) lat_s);
+  if (count <= 0) return false;
+  *lat = atoi(lat_s);
+
+  network_close((char *) url);
 
   return true; // todo come back here and add error handling.
 }

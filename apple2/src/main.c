@@ -13,7 +13,10 @@
 #include "map.h"
 #include "satellite.h"
 #include "osd.h"
-#include "sp.h"
+
+#include "fujinet-network.h"
+
+extern uint8_t sp_get_network_id();
 
 unsigned char net;
 char lon_s[16], lat_s[16];
@@ -23,9 +26,10 @@ unsigned long ts;
 
 void main(void)
 {
+  bool is_ok;
   clrscr();
-  sp_init();
-  net = sp_find_network();
+  network_init();
+  net = sp_get_network_id();
   map();
   tgi_install(tgi_static_stddrv);
   tgi_init();
@@ -37,7 +41,11 @@ void main(void)
     {
       timer=524088;
       clrscr();
-      satellite_fetch(&lon,&lat,lon_s,lat_s,&ts);
+      is_ok = satellite_fetch(&lon,&lat,lon_s,lat_s,&ts);
+      if (!is_ok) {
+        continue;
+      }
+
       osd(lon_s,lat_s,ts);
       satellite_draw(lon,lat);
 

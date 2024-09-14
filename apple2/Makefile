@@ -2,9 +2,6 @@
 #
 # Set the TARGETS and PROGRAM values as required.
 # See makefiles/build.mk for details on directory structure for src files and how to add custom extensions to the build.
-$(info |)
-$(info |)
-$(info Starting Build)
 
 TARGETS = apple2
 PROGRAM := iss
@@ -13,15 +10,13 @@ PROGRAM := iss
 #FUJINET-BUILD-TOOLS_DIR := ../../fujinet-build-tools
 
 export FUJINET_BUILD_TOOLS_DIR := ../
-export FUJINET_LIB_VERSION := 4.5.0
+export FUJINET_LIB_VERSION := 4.6.1
 
 
 # Check if FUJINET_BUILD_TOOLS_DIR is set to a real directory
 ifeq ($(wildcard $(FUJINET_BUILD_TOOLS_DIR)),)
 $(error You must have FUJINET_BUILD_TOOLS_DIR set to the location of fujinet-build-tools repo)
 endif
-
-$(info >>>> Using FUJINET_BUILD_TOOLS_DIR=$(FUJINET_BUILD_TOOLS_DIR))
 
 SUB_TASKS := clean disk test release distlocal
 .PHONY: all help $(SUB_TASKS)
