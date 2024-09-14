@@ -6,7 +6,7 @@ $(info |)
 $(info |)
 $(info Starting Build)
 
-TARGETS = apple2enh apple2
+TARGETS = apple2
 PROGRAM := iss
 
 # We need to set this here to point to the relative path to the fujinet-build-tools repo
