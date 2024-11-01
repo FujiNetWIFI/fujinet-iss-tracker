@@ -53,14 +53,23 @@ void bell(unsigned char bell_type) {
 void dli(void) {
   asm("pha");
 
-  asm("lda #$90");
+  asm("lda $D40B"); // VCOUNT
+  asm("cmp #64");
+  asm("bcs %g", dli_bot_color);
+
+  asm("lda %v", color2); // Contintents color
+  asm("jmp %g", dli_finish);
+
+dli_bot_color:
+  asm("lda #$90"); // Darker blue for text window at the bottom
+
+dli_finish:
   asm("sta $D40A"); // WSYNC
   asm("sta $D018"); // COLPF2
 
   asm("pla");
   asm("rti");
 }
-
 
 /* Set up the screen & PMG */
 void setup(void) {
@@ -98,7 +107,7 @@ void setup(void) {
   POKE(dlist + 2, DL_BLK8);
 
   /* First line of bitmap graphics, with LMS */
-  POKE(dlist + 3, DL_LMS(DL_GRAPHICS7));
+  POKE(dlist + 3, DL_DLI(DL_LMS(DL_GRAPHICS7)));
   POKEW(dlist + 4, (unsigned int) scr_mem);
 
   /* 79 more lines of graphics */
