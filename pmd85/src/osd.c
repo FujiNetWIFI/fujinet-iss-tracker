@@ -31,6 +31,6 @@ void osd(char *lon, char *lat,unsigned long ts) {
     gotoxy(24, 25);
     cprintf("LON: %-10s",lon);
     gotoxy(7, 27);
-    cprintf("Time (GMT): %02d-%03s-%04d, %02d:%02d:%02d",
+    cprintf("Time (GMT): %02d %03s %04d, %02d:%02d:%02d",
         tm.tm_mday, monthNames[tm.tm_mon], tm.tm_year+1900, tm.tm_hour, tm.tm_min, tm.tm_sec);
 }
