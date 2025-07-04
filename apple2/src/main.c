@@ -34,7 +34,7 @@ void main(void)
   tgi_install(tgi_static_stddrv);
   tgi_init();
   tgi_apple2_mix(true);
-  if (get_ostype() >= APPLE_IIIEM)
+  if (get_ostype() == APPLE_IIIEM)
     allow_lowercase(true);
 
   while (1)
