@@ -5,17 +5,20 @@
 #include <6502.h>
 #include <lynx.h>
 #include <tgi.h>
+#include <conio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <stdio.h>
+#include <time.h>
 #include <unistd.h>
 #include "map.h"
 #include "iss.h"
-#include "fujinet.h"
+#include "lynxfnio.h"
 
 #define JSON 1
-#define NET_DEV 0x09
 
-const char url[]="N:HTTP://api.open-notify.org/iss-now.json";
+const char iss_url[]="N:HTTP://api.open-notify.org/iss-now.json";
+const char astros_url[]="N:HTTP://api.open-notify.org/astros.json";
 const char longitude_query[]="Q/iss_position/longitude";
 const char latitude_query[]="Q/iss_position/latitude";
 
@@ -27,13 +30,6 @@ struct _oc
   char url[64];
 } OC; // open command data
 
-struct _cc
-{
-  unsigned char cmd;
-  unsigned char chan;
-
-} CC;
-
 struct _scm
 {
   unsigned char cmd;
@@ -43,122 +39,189 @@ struct _scm
 char longitude[16];
 char latitude[16];
 
+signed int lat, lon;
+
 char timestamp_str[11];
 unsigned long timestamp;
 
-void reload()
+unsigned char num_astros;
+char astros_name[20][40];
+char query[128];
+char buf[64];
+
+
+void json_query(char *json_q, char *buf)
 {
-  unsigned short len;
+  unsigned short len = 0;
+  unsigned int r;
 
-  tgi_clear();
+  r = 5;      // Retry five times
+  
+  fnio_send(NET_DEV, json_q, strlen(json_q));
+  do {
+    fnio_recv(NET_DEV, &buf[0], &len);
+    r--;
+  } while (len == 0 && r != 0);
+  buf[len] = '\0';
+}
 
+
+void get_iss_pos()
+{
+  // Open the ISS URL
   OC.cmd = 'O'; // OPEN
   OC.mode = 12; // Read/write aka HTTP GET
   OC.trans = 0; // No translation
-  strncpy(OC.url,url,sizeof(OC.url));
+  strncpy(OC.url, iss_url, sizeof(OC.url));
+  fnio_send(NET_DEV, (char *) &OC, sizeof(OC));
 
-  fujinet_send(NET_DEV,(unsigned char *)&OC,sizeof(OC));
+  sleep(2);
 
-  sleep(1);
-  
+  // Set channel mode to JSON
   SCM.cmd  = 0xFC; // Set channel mode
   SCM.mode = JSON; // to JSON mode
-  
-  fujinet_send(NET_DEV,(unsigned char *)&SCM,sizeof(SCM));
+  fnio_send(NET_DEV, (char *)&SCM, sizeof(SCM));
+  fnio_send(NET_DEV, (char *)"P", 1); // Parse
 
-  sleep(1);
+  sleep(2);
 
-  fujinet_send(NET_DEV,(unsigned char *)"P",1); // Parse
+  // Get longitude
+  json_query((char *) &longitude_query, (char *) &longitude);
 
-  sleep(1);
-  
-  fujinet_send(NET_DEV,(unsigned char *)longitude_query,sizeof(longitude_query));
-  fujinet_recv(NET_DEV,(unsigned char *)&longitude,&len);
+  // Get latitude
+  json_query((char *) &latitude_query, (char *) &latitude);
 
-  sleep(1);
-  // DO IT AGAIN
-  fujinet_send(NET_DEV,(unsigned char *)longitude_query,sizeof(longitude_query));
-  fujinet_recv(NET_DEV,(unsigned char *)&longitude,&len);
+  // Close the channel
+   fnio_send(NET_DEV, (char *) "C", 1);
 
-  sleep(1);
-
-  fujinet_send(NET_DEV,(unsigned char *)latitude_query,sizeof(latitude_query));
-  fujinet_recv(NET_DEV,(unsigned char *)&latitude,&len);  
-
-  CC.cmd = 'C'; // CLOSE
-  CC.chan = 1;
-
-  fujinet_send(NET_DEV,(unsigned char *)&CC,sizeof(CC));
+  // convert strings
+  if (latitude[0] != '\0') 
+    lat = atoi(latitude);
+  if (longitude[0] != '\0')
+    lon = atoi(longitude);    
 }
+
+
+void get_astros()
+{
+  unsigned char i;
+
+
+  // Open the ISS URL
+  OC.cmd = 'O'; // OPEN
+  OC.mode = 12; // Read/write aka HTTP GET
+  OC.trans = 0; // No translation
+  strncpy(OC.url, astros_url, sizeof(OC.url));
+  fnio_send(NET_DEV, (char *) &OC, sizeof(OC));
+
+  sleep(2);
+
+  // Set channel mode to JSON
+  SCM.cmd  = 0xFC; // Set channel mode
+  SCM.mode = JSON; // to JSON mode
+  fnio_send(NET_DEV, (char *)&SCM, sizeof(SCM));
+  fnio_send(NET_DEV, (char *)"P", 1); // Parse
+
+  sleep(2);
+
+  // Get number of astros
+  strcpy(query, "Q/number");
+  json_query((char*) &query, (char *) &buf);
+  num_astros = atoi(buf);
+
+  // Get astros names
+  for (i=0; i<num_astros; i++) {
+    sprintf(query, "Q/people/%d/name", i);
+    json_query((char *) &query, (char *) &astros_name[i]);
+  }
+
+  // Close the channel
+  fnio_send(NET_DEV, (char *) "C", 1);
+}
+
+
+// 0123445678901234567890
+//  12 people in space!
+//
+// Oleg Kononenko
+// Nikolai Chub
+// Tracy Caldwell Dyson
+// Matthew Dominick
+// Michael Barratt
+// Jeanette Epps
+// Alexander Grebenkin
+// Butch Wilmore
+
+void display_astros()
+{
+  char s[20];
+  unsigned char i;
+
+
+  tgi_clear();
+  tgi_setcolor(TGI_COLOR_WHITE);
+
+  sprintf(s, " %d people in space!", num_astros);
+  tgi_outtextxy(1, 0, s);
+
+  for (i=0; i<num_astros; i++) {
+    tgi_outtextxy(0, (8*i)+8, astros_name[i]);
+  }
+
+  cgetc();
+}
+
 
 void main(void)
 {
-  unsigned short len;
-  
+  unsigned long t;
+
+
+  // Setup TGI
   tgi_install(tgi_static_stddrv);
   tgi_init();
-
-  fujinet_init();
-  
   tgi_setcolor(TGI_COLOR_WHITE);
 
+  // Init Fujinet and Serial
+  fnio_init();
+
+  // Display msg to user
   tgi_clear();
+  tgi_outtextxy(16, 1, "LYNX ISS TRACKER");
+  tgi_outtextxy(1, 17, "Getting location...");
+  get_iss_pos();
+  sprintf(query, "LAT:  %s", latitude);
+  tgi_outtextxy(8, 25, query);
+  sprintf(query, "LONG: %s", longitude);
+  tgi_outtextxy(8, 33, query);
 
-  OC.cmd = 'O'; // OPEN
-  OC.mode = 12; // Read/write aka HTTP GET
-  OC.trans = 0; // No translation
-  strncpy(OC.url,url,sizeof(OC.url));
+  tgi_outtextxy(1, 49, "Getting astronauts...");
+  get_astros();
+  sprintf(buf, "People: %d", num_astros);
+  tgi_outtextxy(8, 57, buf);
 
-  fujinet_send(NET_DEV,(unsigned char *)&OC,sizeof(OC));
+  cgetc();
 
-  tgi_outtext("O");
-  
-  sleep(1);
-  
-  SCM.cmd  = 0xFC; // Set channel mode
-  SCM.mode = JSON; // to JSON mode
-  
-  fujinet_send(NET_DEV,(unsigned char *)&SCM,sizeof(SCM));
-
-  tgi_outtext("S");
-
-  sleep(1);
-
-  fujinet_send(NET_DEV,(unsigned char *)"P",1); // Parse
-
-  tgi_outtext("P");
-
-  sleep(1);
-  
-  fujinet_send(NET_DEV,(unsigned char *)longitude_query,sizeof(longitude_query));
-  fujinet_recv(NET_DEV,(unsigned char *)&longitude,&len);
-
-  tgi_outtext("Q");
-
-  sleep(1);
-  // DO IT AGAIN
-  fujinet_send(NET_DEV,(unsigned char *)longitude_query,sizeof(longitude_query));
-  fujinet_recv(NET_DEV,(unsigned char *)&longitude,&len);
-
-  tgi_outtext("Q");
-
-  sleep(1);
-
-  fujinet_send(NET_DEV,(unsigned char *)latitude_query,sizeof(latitude_query));
-  fujinet_recv(NET_DEV,(unsigned char *)&latitude,&len);  
-
-  tgi_outtext("Q");
-
-  CC.cmd = 'C'; // CLOSE
-  CC.chan = 1;
-
-  fujinet_send(NET_DEV,(unsigned char *)&CC,sizeof(CC));
-  
+  tgi_clear();
   while (1)
   {
-    iss(atoi(longitude)+180,atoi(latitude)+270);
+    iss(lon, lat);
     map();
-    sleep(15);
-    reload();
+
+    t = clock();
+
+    while (1) {
+      if (kbhit()) {
+        cgetc();
+        display_astros();
+        map();
+        break;
+      }
+
+      if (((clock() - t) / CLOCKS_PER_SEC) > 60)
+        break;
+    }    
+
+    get_iss_pos();    // update position
   }
 }
