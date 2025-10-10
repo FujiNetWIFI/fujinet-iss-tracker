@@ -100,9 +100,6 @@ static void update_stars(void) {
     tgi_outtextxy(80-((strlen(astros_craft[astro])/2)*8), 54, astros_craft[astro]);
 
     // Page flip for double buffering
-    //tgi_setviewpage(draw_page);
-    //draw_page ^= 1;
-    //tgi_setdrawpage(draw_page);
 	tgi_updatedisplay();
 
 }
@@ -121,7 +118,7 @@ void display_astros(void) {
 
     
     tgi_clear();
-    tgi_setpalette(&star_pal);
+    tgi_setpalette((const unsigned char *) &star_pal);
 
     init_stars();
     astro = 0;

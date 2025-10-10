@@ -182,7 +182,10 @@ void main(void)
 
   // Display msg to user
   tgi_clear();
+  tgi_setcolor(TGI_COLOR_YELLOW);
   tgi_outtextxy(16, 1, "LYNX ISS TRACKER");
+  
+  tgi_setcolor(TGI_COLOR_WHITE);
   tgi_outtextxy(1, 17, "Getting location...");
   get_iss_pos();
   sprintf(query, "Lat:  %s", latitude);
@@ -195,17 +198,18 @@ void main(void)
   sprintf(buf, "People: %d", num_astros);
   tgi_outtextxy(8, 57, buf);
 
+  tgi_setcolor(TGI_COLOR_YELLOW);
   tgi_outtextxy(28, 90, "Press Option 1");
   cgetc();
 
   tgi_clear();
+  // Main ISS location loop
   while (1)
   {
     iss(lon, lat);
     map();
 
     t = clock();
-
     while (1) {
       if (kbhit()) {
         cgetc();
