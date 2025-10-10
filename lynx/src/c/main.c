@@ -46,6 +46,7 @@ unsigned long timestamp;
 
 unsigned char num_astros;
 char astros_name[20][40];
+char astros_craft[20][20];
 char query[128];
 char buf[64];
 
@@ -128,11 +129,14 @@ void get_astros()
   strcpy(query, "Q/number");
   json_query((char*) &query, (char *) &buf);
   num_astros = atoi(buf);
+  num_astros = num_astros % 20;   // cap to 20
 
   // Get astros names
   for (i=0; i<num_astros; i++) {
     sprintf(query, "Q/people/%d/name", i);
     json_query((char *) &query, (char *) &astros_name[i]);
+    sprintf(query, "Q/people/%d/craft", i);
+    json_query((char *) &query, (char *) &astros_craft[i]);
   }
 
   // Close the channel
@@ -140,18 +144,7 @@ void get_astros()
 }
 
 
-// 0123445678901234567890
-//  12 people in space!
-//
-// Oleg Kononenko
-// Nikolai Chub
-// Tracy Caldwell Dyson
-// Matthew Dominick
-// Michael Barratt
-// Jeanette Epps
-// Alexander Grebenkin
-// Butch Wilmore
-
+/*
 void display_astros()
 {
   char s[20];
@@ -169,7 +162,9 @@ void display_astros()
   }
 
   cgetc();
-}
+}*/
+
+extern void display_astros();
 
 
 void main(void)
@@ -190,9 +185,9 @@ void main(void)
   tgi_outtextxy(16, 1, "LYNX ISS TRACKER");
   tgi_outtextxy(1, 17, "Getting location...");
   get_iss_pos();
-  sprintf(query, "LAT:  %s", latitude);
+  sprintf(query, "Lat:  %s", latitude);
   tgi_outtextxy(8, 25, query);
-  sprintf(query, "LONG: %s", longitude);
+  sprintf(query, "Long: %s", longitude);
   tgi_outtextxy(8, 33, query);
 
   tgi_outtextxy(1, 49, "Getting astronauts...");
@@ -200,6 +195,7 @@ void main(void)
   sprintf(buf, "People: %d", num_astros);
   tgi_outtextxy(8, 57, buf);
 
+  tgi_outtextxy(28, 90, "Press Option 1");
   cgetc();
 
   tgi_clear();
