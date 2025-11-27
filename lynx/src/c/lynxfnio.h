@@ -11,7 +11,7 @@
 
 // Devices
 #define DISK_DEV  	0x04      		// disk device
-#define NET_DEV 	0x09			// network device
+#define NET_DEV 	0x0E			// network device
 #define FN_DEV		0x0F			// Fujinet device
 
 // Max message size
