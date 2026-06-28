@@ -14,4 +14,9 @@
  */
 void map(void);
 
+/**
+ * @brief restore the map under the OSD region, erasing the fetching message (CoCo 1/2)
+ */
+void map_clear_osd(void);
+
 #endif /* MAP_H */

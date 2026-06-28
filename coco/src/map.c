@@ -9,6 +9,8 @@
 #include "pmode3.h"
 #include "map.h"
 
+#ifndef COCO3
+
 static const unsigned char map_bitmap[] = {
   0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55,
   0xff, 0xfd, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55,
@@ -532,3 +534,24 @@ void map(void)
     pmode3();
     pmode3_memcpy(map_bitmap);
 }
+
+void map_clear_osd(void)
+{
+    pmode3_restore_bottom(map_bitmap);
+}
+
+#else /* COCO3 */
+
+#include "map_coco3.h"
+
+void map(void)
+{
+    pmode3();
+    blit_rle(map_coco3_rle, MAP_COCO3_RLE_LEN);
+}
+
+void map_clear_osd(void)
+{
+}
+
+#endif /* COCO3 */

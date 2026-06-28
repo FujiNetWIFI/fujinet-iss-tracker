@@ -19,11 +19,30 @@
 
 #define SUCCESS 1
 
-#define API_ENDPOINT "N:HTTP://api.open-notify.org/iss-now.json"
+#define API_ENDPOINT "N:HTTP://api.wheretheiss.at/v1/satellites/25544"
 
-#define QUERY_LONGITUDE "/iss_position/longitude"
-#define QUERY_LATITUDE "/iss_position/latitude"
+#define QUERY_LONGITUDE "/longitude"
+#define QUERY_LATITUDE "/latitude"
 #define QUERY_TIMESTAMP "/timestamp"
+
+/**
+ * @brief copy a numeric string keeping at most 2 fractional digits
+ */
+static void copy_trunc(const char *src, char *dst)
+{
+    int n = 0, dec = -1;
+
+    while (src[n] && n < 14)
+    {
+        dst[n] = src[n];
+        if (src[n] == '.')
+            dec = n;
+        n++;
+        if (dec >= 0 && n == dec + 3)
+            break;
+    }
+    dst[n] = 0;
+}
 
 /**
  * @brief fetch individual json element and populate vars.
@@ -31,6 +50,8 @@
 void fetch_json(const char *qs, char *s, int *i)
 {
     NetworkStatus ns;
+    char buf[32];
+    unsigned n;
 
     // Set query
     net_set_json_query(0,qs);
@@ -39,10 +60,14 @@ void fetch_json(const char *qs, char *s, int *i)
     net_status(0,&ns);
 
     // read into buffer
-    net_read(0,(unsigned char *)s,ns.bytesWaiting);
+    n = ns.bytesWaiting;
+    if (n > 31) n = 31;
+    net_read(0,(unsigned char *)buf,n);
+    buf[n] = 0;
 
     // Convert string to integer
-    *i=atoi(s);
+    *i = atoi(buf);
+    copy_trunc(buf,s);
 }
 
 /**
@@ -72,6 +97,13 @@ void fetch_json_timestamp(const char *qs, unsigned long *l)
 void fetch(void)
 {
     byte err;
+
+#ifdef COCO3
+    clear_bottom();
+    puts2x_centered(168,3,"FETCHING ISS LOCATION...");
+#else
+    puts(0,176,1,"FETCHING ISS...");
+#endif
 
     err = net_open(0,HTTP_GET,NO_TRANSLATION,API_ENDPOINT);
 

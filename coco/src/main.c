@@ -12,17 +12,29 @@
 #include "satellite.h"
 #include "osd.h"
 #include "fetch.h"
+#include "pmode3.h"
+#include "who.h"
 
 int main(void)
 {
+    unsigned char view = 0;   /* 0 = map, 1 = who's in space */
+
     while(1)
     {
-        map();
-        fetch();
-        satellite();
-        osd();
-        sleep(120);
+        if (view == 0)
+        {
+            map();
+            fetch();
+            satellite();
+            osd();
+        }
+        else
+        {
+            who();
+        }
+
+        view = input_delay(view);
     }
-    
+
     return 0;
 }

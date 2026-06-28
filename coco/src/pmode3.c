@@ -6,6 +6,8 @@
  * @verbose Plot 2bpp pixels and print text functions.
  */
 
+#ifndef COCO3
+
 #include <cmoc.h>
 #include <coco.h>
 
@@ -17,7 +19,12 @@ static byte *_screenBuffer;
 /**
  * @brief font to use for putc
  */
-extern const unsigned char _font[128][8]; 
+extern const unsigned char _font[128][8];
+
+/**
+ * @brief 4x8 font for small text (who's-in-space list), low 4 bits used
+ */
+extern const unsigned char font4x8[96][8];
 
 /**
  * AND table for 2 bits per pixel
@@ -53,7 +60,11 @@ byte orTable[4][4] =
  */
 void pmode3_memcpy(const byte *b)
 {
-    memcpy(_screenBuffer,b,6144);
+    word i;
+    /* XOR remaps the map's color indices: ocean -> blue, land -> green
+       (colorset 0: green/yellow/blue/red) */
+    for (i = 0; i < 6144; i++)
+        _screenBuffer[i] = b[i] ^ 0xFF;
 }
 
 /**
@@ -154,5 +165,61 @@ void pmode3(void)
     width(32);
     _screenBuffer = (byte *) (((word) * (byte *) 0x00BC) << 8);
     pmode(3,_screenBuffer);
-    screen(1,1);
+    screen(1,0);
 }
+
+/**
+ * @brief restore the OSD region (rows 160-191) of the screen from a bitmap
+ */
+void pmode3_restore_bottom(const byte *b)
+{
+    word i;
+    for (i = 5120; i < 6144; i++)
+        _screenBuffer[i] = b[i] ^ 0xFF;
+}
+
+void pmode3_cls(byte fill)
+{
+    memset(_screenBuffer, fill, 6144);
+}
+
+void putc4(int x, int y, char ch, char color)
+{
+    if (ch < 0x20)
+        return;
+
+    for (int i = 0; i < 8; i++)
+    {
+        unsigned char b = font4x8[(unsigned char)(ch - 0x20)][i];
+        for (int j = 0; j < 4; j++)
+            if (b & (1 << (3 - j)))
+                pset(x + j, y + i, color);
+    }
+}
+
+void puts4(int x, int y, char color, const char *s)
+{
+    while (*s)
+    {
+        putc4(x, y, *s++, color);
+        x += 4;
+    }
+}
+
+unsigned char input_delay(unsigned char view)
+{
+    word start = getTimer();
+
+    while ((word)(getTimer() - start) < 7200U)
+    {
+        if (inkey() == ' ')
+        {
+            while (inkey())
+                ;
+            return (unsigned char)(view ^ 1);
+        }
+    }
+    return view;
+}
+
+#endif /* COCO3 */

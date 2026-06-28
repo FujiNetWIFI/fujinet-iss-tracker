@@ -23,6 +23,22 @@ void pmode3_xor(void);
 void pmode3_memcpy(const byte *b);
 
 /**
+ * @brief restore the OSD region (rows 160-191) from a bitmap (CoCo 1/2)
+ */
+void pmode3_restore_bottom(const byte *b);
+
+/**
+ * @brief clear the whole PMODE3 screen with a byte fill pattern (CoCo 1/2)
+ */
+void pmode3_cls(byte fill);
+
+/**
+ * @brief place a 4x8 char / string at x,y with color (CoCo 1/2 small text)
+ */
+void putc4(int x, int y, char ch, char color);
+void puts4(int x, int y, char color, const char *s);
+
+/**
  * @brief Place pixel on PMODE3 display at x,y with color c 
  * @param x Horizontal Position (0-127) 
  * @param y Vertical Position (0-191)
@@ -65,5 +81,28 @@ void puts(int x, int y, char color, const char *s);
  * @brief Set and display PMODE3 (128x192x4c)
  */
 void pmode3(void);
+
+/**
+ * @brief decompress a byte-RLE bitmap into the screen (CoCo 3 hi-res)
+ * @param rle pointer to (count,value) pairs
+ * @param len length of the RLE data in bytes
+ */
+void blit_rle(const byte *rle, word len);
+
+/**
+ * @brief print s at double size (16x16), horizontally centered, at pixel row y
+ */
+void puts2x_centered(int y, char color, const char *s);
+
+/**
+ * @brief clear the whole hi-res screen to palette slot c (CoCo 3)
+ */
+void hires_cls(byte c);
+
+/**
+ * @brief inter-refresh keyboard-polling delay; 'P' toggles view (returns it),
+ *        SPACE cycles land color (temporary)
+ */
+unsigned char input_delay(unsigned char view);
 
 #endif /* PMODE3_H */
