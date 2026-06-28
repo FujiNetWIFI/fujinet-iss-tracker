@@ -14,7 +14,7 @@ TARGET_EXEC := iss
 BUILD_DIR := ./build/coco12
 endif
 
-DIST_DISK := iss.dsk
+DIST_DIR := ./dist
 
 SRCS := $(shell find $(SRC_DIRS) -name '*.c')
 OBJS := $(SRCS:%=$(BUILD_DIR)/%.o)
@@ -23,24 +23,26 @@ DEPS := $(OBJS:.o=.d)
 INC_DIRS := $(shell find $(SRC_DIRS) -type d)
 INC_FLAGS := $(addprefix -I,$(INC_DIRS))
 
-.PHONY: all dist clean
+.PHONY: all disk release clean
 
-# Default: build both versions and the auto-detecting boot disk in one pass.
-# loader.bin detects the machine and launches iss3.bin (CoCo 3) or iss.bin (CoCo 1/2).
-all: dist
+all: disk
 
-dist: clean
+release:
+	mkdir -p $(DIST_DIR)
 	$(MAKE) iss.bin
 	$(MAKE) COCO3=1 iss3.bin
 	$(CC) -oloader.bin loader.c
-	$(RM) $(DIST_DISK)
-	decb dskini $(DIST_DISK)
+	cp iss.bin iss3.bin loader.bin $(DIST_DIR)/
+
+# loader.bin detects the machine and launches iss3.bin (CoCo 3) or iss.bin (CoCo 1/2).
+disk: release
+	$(RM) $(DIST_DIR)/iss.dsk
+	decb dskini $(DIST_DIR)/iss.dsk
 	printf '10 RUNM"LOADER"\n' > autoexec.bas
-	decb copy -0 -a -l -r autoexec.bas $(DIST_DISK),AUTOEXEC.BAS
-	writecocofile $(DIST_DISK) loader.bin
-	writecocofile $(DIST_DISK) iss.bin
-	writecocofile $(DIST_DISK) iss3.bin
-	cp $(DIST_DISK) /tnfs/coco/
+	decb copy -0 -a -l -r autoexec.bas $(DIST_DIR)/iss.dsk,AUTOEXEC.BAS
+	writecocofile $(DIST_DIR)/iss.dsk $(DIST_DIR)/loader.bin
+	writecocofile $(DIST_DIR)/iss.dsk $(DIST_DIR)/iss.bin
+	writecocofile $(DIST_DIR)/iss.dsk $(DIST_DIR)/iss3.bin
 
 $(TARGET_EXEC).bin: $(OBJS)
 	$(CC) -o$@ $(LDFLAGS_EXTRA) $(OBJS)
@@ -51,7 +53,7 @@ $(BUILD_DIR)/%.c.o: %.c
 	$(CC) $(CFLAGS) -o $@ -c $<
 
 clean:
-	$(RM) -r iss iss3 iss.bin iss3.bin iss.dsk iss3.dsk loader.bin autoexec.bas ./build
+	$(RM) -r iss iss3 iss.bin iss3.bin loader.bin autoexec.bas ./build $(DIST_DIR)
 
 -include $(DEPS)
 
