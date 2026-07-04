@@ -1,0 +1,63 @@
+SRC_DIRS ?= ./src
+DISK_TOOL = dragondos
+DISK_TOOL_INFO = https://www.rolfmichelsen.com/dragontools/
+
+
+COCO_ORG=2800
+CC=cmoc
+
+CFLAGS := -DDRAGON --dragon
+LDFLAGS_EXTRA += --dragon
+TARGET_EXEC := iss
+BUILD_DIR := ./build/dragon
+
+DIST_DIR := ./dist_drg
+
+SRCS := $(shell find $(SRC_DIRS) -name '*.c')
+OBJS := $(SRCS:%=$(BUILD_DIR)/%.o)
+DEPS := $(OBJS:.o=.d)
+
+INC_DIRS := $(shell find $(SRC_DIRS) -type d)
+INC_FLAGS := $(addprefix -I,$(INC_DIRS))
+
+.PHONY: all disk release clean
+
+all: iss.vdk
+
+release:
+	mkdir -p $(DIST_DIR)
+	$(MAKE) -f $(lastword $(MAKEFILE_LIST)) iss.bin
+	cp iss.bin $(DIST_DIR)/
+
+iss.vdk: release
+	$(RM) $@
+	$(call require,$(DISK_TOOL),$(DISK_TOOL_INFO))
+	$(DISK_TOOL) new $@ 180
+	$(call copy-to-disk,0x$(COCO_ORG) 0x$(COCO_ORG),iss.bin,,$@)
+	$(foreach f,$(DISK_EXTRA_FILES),$(call copy-to-disk,,$(f),,$@);)
+
+
+$(TARGET_EXEC).bin: $(OBJS)
+	$(CC) -o$@ $(LDFLAGS_EXTRA) $(OBJS)
+
+# c source
+$(BUILD_DIR)/%.c.o: %.c
+	$(MKDIR_P) $(dir $@)
+	$(CC) $(CFLAGS) -o $@ -c $<
+
+clean:
+	$(RM) -r iss iss.bin *.lst *.s ./build $(DIST_DIR)
+
+-include $(DEPS)
+
+MKDIR_P ?= mkdir -p
+
+
+# Arguments:
+# $1 == DISK_TOOL flags
+# $2 == source file
+# $3 == destination name
+# $4 == disk image
+define copy-to-disk
+  $(DISK_TOOL) insertbinary $4 $2 $1
+endef

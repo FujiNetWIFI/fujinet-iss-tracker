@@ -17,7 +17,11 @@ byte dwread(byte *s, int l)
         pshs x,y
             ldx :s
             ldy :l
-            jsr [0xD93F]
+#ifdef DRAGON
+        jsr [0xF9FE]
+#else        
+        jsr [0xD93F]
+#endif
             puls y,x
             tfr cc,b
             lsrb
@@ -39,7 +43,11 @@ byte dwwrite(byte *s, int l)
         pshs x,y
             ldx :s
             ldy :l
+#ifdef DRAGON            
+            jsr [0xFA00]
+#else
             jsr [0xD941]
+#endif
             tfr cc,d
             puls y,x
             }

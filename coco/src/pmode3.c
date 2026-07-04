@@ -164,6 +164,11 @@ void pmode3(void)
     rgb();
     width(32);
     _screenBuffer = (byte *) (((word) * (byte *) 0x00BC) << 8);
+#ifdef DRAGON
+  _screenBuffer = (byte *) 0x1000;
+#else
+    _screenBuffer = (byte *) (((word) * (byte *) 0x00BC) << 8);
+#endif
     pmode(3,_screenBuffer);
     screen(1,0);
 }
