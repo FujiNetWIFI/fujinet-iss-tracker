@@ -45,8 +45,8 @@ static void init_stars(void) {
     unsigned char i;
 
     for (i = 0; i < NUM_STARS; ++i) {
-	stars[i].x = (char)((rand() % SCREEN_W) - (SCREEN_W / 2));
-	stars[i].y = (char)((rand() % SCREEN_H) - (SCREEN_H / 2));
+	    stars[i].x = (char)((rand() % SCREEN_W) - (SCREEN_W / 2));
+	    stars[i].y = (char)((rand() % SCREEN_H) - (SCREEN_H / 2));
         stars[i].z = (rand() % MAX_DEPTH) + 1;
     }
 }
@@ -83,7 +83,7 @@ static void update_stars(void) {
         // --- Grayscale shading ---
         // z=64 dark gray (~8)
         // z=0  white (~15)
-        shade = 15 - (s->z >> 3);  // divide by 8 for 0�8 range
+        shade = 15 - (s->z >> 3);  // divide by 8 for 0-8 range
         if (shade < 8) shade = 8;  // clamp lower end
 
         tgi_setcolor(shade);

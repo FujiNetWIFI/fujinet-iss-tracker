@@ -19,8 +19,8 @@
 
 const char iss_url[]="N:HTTP://api.open-notify.org/iss-now.json";
 const char astros_url[]="N:HTTP://api.open-notify.org/astros.json";
-const char longitude_query[]="Q/iss_position/longitude";
-const char latitude_query[]="Q/iss_position/latitude";
+const char longitude_query[]="/iss_position/longitude";
+const char latitude_query[]="/iss_position/latitude";
 
 struct _oc
 {
@@ -35,6 +35,18 @@ struct _scm
   unsigned char cmd;
   unsigned char mode;
 } SCM; // set channel mode
+
+struct _c
+{
+  unsigned char cmd;
+} CMD;
+
+struct _jsonq
+{
+  unsigned char cmd;
+  char query[128];
+} JSONQ;
+
 
 char longitude[16];
 char latitude[16];
@@ -58,9 +70,13 @@ void json_query(char *json_q, char *buf)
 
   r = 5;      // Retry five times
   
-  fnio_send(NET_DEV, json_q, strlen(json_q));
+  JSONQ.cmd = FUJICMD_JSON_QUERY;
+  memset(JSONQ.query, 0, 128);
+  strcpy(JSONQ.query, json_q);
+
+  fnio_send_buf(FUJI_DEVICEID_NETWORK, (char *) &JSONQ, strlen(JSONQ.query)+2);
   do {
-    fnio_recv(NET_DEV, &buf[0], &len);
+    fnio_recv_buf(&buf[0], &len);
     r--;
   } while (len == 0 && r != 0);
   buf[len] = '\0';
@@ -70,19 +86,23 @@ void json_query(char *json_q, char *buf)
 void get_iss_pos()
 {
   // Open the ISS URL
-  OC.cmd = 'O'; // OPEN
+  OC.cmd = FUJICMD_OPEN; // OPEN
   OC.mode = 12; // Read/write aka HTTP GET
   OC.trans = 0; // No translation
   strncpy(OC.url, iss_url, sizeof(OC.url));
-  fnio_send(NET_DEV, (char *) &OC, sizeof(OC));
+  fnio_send_buf(FUJI_DEVICEID_NETWORK, (char *) &OC, sizeof(OC));
+  fnio_recv_ack();
 
   sleep(2);
 
   // Set channel mode to JSON
-  SCM.cmd  = 0xFC; // Set channel mode
+  SCM.cmd  = FUJICMD_JSON; // Set channel mode
   SCM.mode = JSON; // to JSON mode
-  fnio_send(NET_DEV, (char *)&SCM, sizeof(SCM));
-  fnio_send(NET_DEV, (char *)"P", 1); // Parse
+  fnio_send_buf(FUJI_DEVICEID_NETWORK, (char *) &SCM, sizeof(SCM));
+  fnio_recv_ack();
+  CMD.cmd = FUJICMD_JSON_PARSE;
+  fnio_send_buf(FUJI_DEVICEID_NETWORK, (char *) &CMD, sizeof(CMD)); // Parse
+  fnio_recv_ack();
 
   sleep(2);
 
@@ -93,7 +113,9 @@ void get_iss_pos()
   json_query((char *) &latitude_query, (char *) &latitude);
 
   // Close the channel
-   fnio_send(NET_DEV, (char *) "C", 1);
+  CMD.cmd = FUJICMD_CLOSE;
+  fnio_send_buf(FUJI_DEVICEID_NETWORK, (char *) &CMD, sizeof(CMD));
+  fnio_recv_ack();
 
   // convert strings
   if (latitude[0] != '\0') 
@@ -109,60 +131,47 @@ void get_astros()
 
 
   // Open the ISS URL
-  OC.cmd = 'O'; // OPEN
+  OC.cmd = FUJICMD_OPEN; // OPEN
   OC.mode = 12; // Read/write aka HTTP GET
   OC.trans = 0; // No translation
   strncpy(OC.url, astros_url, sizeof(OC.url));
-  fnio_send(NET_DEV, (char *) &OC, sizeof(OC));
+  fnio_send_buf(FUJI_DEVICEID_NETWORK, (char *) &OC, sizeof(OC));
+  fnio_recv_ack();
 
   sleep(2);
 
   // Set channel mode to JSON
-  SCM.cmd  = 0xFC; // Set channel mode
+  SCM.cmd  = FUJICMD_JSON; // Set channel mode
   SCM.mode = JSON; // to JSON mode
-  fnio_send(NET_DEV, (char *)&SCM, sizeof(SCM));
-  fnio_send(NET_DEV, (char *)"P", 1); // Parse
+  fnio_send_buf(FUJI_DEVICEID_NETWORK, (char *) &SCM, sizeof(SCM));
+  fnio_recv_ack();
+  CMD.cmd = FUJICMD_JSON_PARSE;
+  fnio_send_buf(FUJI_DEVICEID_NETWORK, (char *) &CMD, sizeof(CMD)); // Parse
+  fnio_recv_ack();
 
   sleep(2);
 
   // Get number of astros
-  strcpy(query, "Q/number");
+  strcpy(query, "/number");
   json_query((char*) &query, (char *) &buf);
   num_astros = atoi(buf);
-  num_astros = num_astros % 20;   // cap to 20
+  if (num_astros > 20)        // cap to 20
+    num_astros = 20;
 
   // Get astros names
   for (i=0; i<num_astros; i++) {
-    sprintf(query, "Q/people/%d/name", i);
+    sprintf(query, "/people/%d/name", i);
     json_query((char *) &query, (char *) &astros_name[i]);
-    sprintf(query, "Q/people/%d/craft", i);
+    sprintf(query, "/people/%d/craft", i);
     json_query((char *) &query, (char *) &astros_craft[i]);
   }
 
   // Close the channel
-  fnio_send(NET_DEV, (char *) "C", 1);
+  CMD.cmd = FUJICMD_CLOSE;
+  fnio_send_buf(FUJI_DEVICEID_NETWORK, (char *) &CMD, sizeof(CMD));
+  fnio_recv_ack();
 }
 
-
-/*
-void display_astros()
-{
-  char s[20];
-  unsigned char i;
-
-
-  tgi_clear();
-  tgi_setcolor(TGI_COLOR_WHITE);
-
-  sprintf(s, " %d people in space!", num_astros);
-  tgi_outtextxy(1, 0, s);
-
-  for (i=0; i<num_astros; i++) {
-    tgi_outtextxy(0, (8*i)+8, astros_name[i]);
-  }
-
-  cgetc();
-}*/
 
 extern void display_astros();
 
