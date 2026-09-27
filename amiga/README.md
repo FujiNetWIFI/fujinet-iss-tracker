@@ -5,6 +5,8 @@ window on its own 320×256 (PAL) or 320×200 (NTSC) lores screen. The map
 shows:
 
 - the ISS as a colour-cycling hardware sprite;
+- an astronaut who goes on a spacewalk around the station every two
+  minutes (a second hardware sprite);
 - day/night shading for the current time, with a soft terminator;
 - the ISS ground track from roughly the last four hours (two to three orbits);
 - latitude, longitude and UTC time in a panel below.
@@ -78,6 +80,7 @@ python3 tools/png2planar.py --source land_shallow_topo_2048.jpg gfx/map.png src/
 |---|---|
 | R | Refresh now |
 | W | Who's in space |
+| S | Send the astronaut on a spacewalk now |
 | T | Ground track on/off |
 | N | Night shading on/off |
 | Q / Esc | Quit (or use the close gadget) |
@@ -97,7 +100,7 @@ The display uses these colour registers:
 |---|---|
 | Bitplanes 0–3 | The map. |
 | Bitplane 4 | The night mask. Colour *n* + 16 is the dark twin of map colour *n*. |
-| 1–3, 5–7 | Reserved for UI pens. Their twins are the mouse pointer (17–19) and the ISS sprite (21–23). |
+| 1–3, 5–7 | Reserved for UI pens. Their twins are the mouse pointer (17–19) and the ISS sprite pair (21–23), which the astronaut shares. |
 | 0, 4, 8–15 | The ten map colours that remain. |
 
 The map is composed in an off-screen chip RAM bitmap: terrain, then the
@@ -114,7 +117,7 @@ where the sun sets.
 |---|---|
 | `src/main.c` | Startup, timer, event loop, menus and keys |
 | `src/screen.c` | Screen, window, map compositor, status panel |
-| `src/sprite.c` | ISS hardware sprite and colour cycling |
+| `src/sprite.c` | ISS and astronaut hardware sprites, colour cycling, spacewalk path |
 | `src/night.c` | Night mask bitplane |
 | `src/trail.c` | Ground track ring buffer |
 | `src/who.c` | "Who's in space" window |

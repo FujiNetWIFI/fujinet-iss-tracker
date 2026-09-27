@@ -22,11 +22,13 @@
 #include "trail.h"
 #include "who.h"
 
-#define TICK_MICROS   200000L    /* sprite colour cycle rate */
-#define TICKS_PER_SEC 5
+#define TICK_MICROS   100000L    /* sprite animation rate */
+#define TICKS_PER_SEC 10
 #define REFRESH_SECS  60
 #define RETRY_SECS    5
 #define NODEVICE_SECS 15
+#define FIRST_WALK_SECS 20       /* first spacewalk after the first fix */
+#define WALK_EVERY_SECS 120
 
 struct IntuitionBase *IntuitionBase;
 struct GfxBase *GfxBase;
@@ -41,11 +43,12 @@ static int have_pos;
 static int show_night = 1;
 static int show_trail = 1;
 static int countdown;
+static int walk_countdown = FIRST_WALK_SECS;
 static int warned_nodevice;
 
 /* ---- Menus (Intuition 1.3 structures) ---------------------------------- */
 
-enum { M_REFRESH, M_WHO, M_TRAIL, M_NIGHT, M_ABOUT, M_QUIT };
+enum { M_REFRESH, M_WHO, M_WALK, M_TRAIL, M_NIGHT, M_ABOUT, M_QUIT };
 
 #define ITEM_W (LOWCHECKWIDTH + 15 * 8 + LOWCOMMWIDTH + 4)
 #define ITEM_H 10
@@ -54,6 +57,7 @@ static struct IntuiText t_quit    = { 0, 1, JAM2, LOWCHECKWIDTH, 1, 0, (UBYTE *)
 static struct IntuiText t_about   = { 0, 1, JAM2, LOWCHECKWIDTH, 1, 0, (UBYTE *)"About...", 0 };
 static struct IntuiText t_night   = { 0, 1, JAM2, LOWCHECKWIDTH, 1, 0, (UBYTE *)"Night shading", 0 };
 static struct IntuiText t_trail   = { 0, 1, JAM2, LOWCHECKWIDTH, 1, 0, (UBYTE *)"Ground track", 0 };
+static struct IntuiText t_walk    = { 0, 1, JAM2, LOWCHECKWIDTH, 1, 0, (UBYTE *)"Spacewalk!", 0 };
 static struct IntuiText t_who     = { 0, 1, JAM2, LOWCHECKWIDTH, 1, 0, (UBYTE *)"Who's in space?", 0 };
 static struct IntuiText t_refresh = { 0, 1, JAM2, LOWCHECKWIDTH, 1, 0, (UBYTE *)"Refresh now", 0 };
 
@@ -62,11 +66,12 @@ static struct IntuiText t_refresh = { 0, 1, JAM2, LOWCHECKWIDTH, 1, 0, (UBYTE *)
       ITEMTEXT | ITEMENABLED | HIGHCOMP | COMMSEQ | (flags), \
       0, (APTR)&text, 0, key, 0, 0 }
 
-static struct MenuItem i_quit = ITEM(0, 5, 0, t_quit, 'Q');
-static struct MenuItem i_about = ITEM(&i_quit, 4, 0, t_about, '?');
-static struct MenuItem i_night = ITEM(&i_about, 3, CHECKIT | MENUTOGGLE | CHECKED, t_night, 'N');
-static struct MenuItem i_trail = ITEM(&i_night, 2, CHECKIT | MENUTOGGLE | CHECKED, t_trail, 'T');
-static struct MenuItem i_who = ITEM(&i_trail, 1, 0, t_who, 'W');
+static struct MenuItem i_quit = ITEM(0, 6, 0, t_quit, 'Q');
+static struct MenuItem i_about = ITEM(&i_quit, 5, 0, t_about, '?');
+static struct MenuItem i_night = ITEM(&i_about, 4, CHECKIT | MENUTOGGLE | CHECKED, t_night, 'N');
+static struct MenuItem i_trail = ITEM(&i_night, 3, CHECKIT | MENUTOGGLE | CHECKED, t_trail, 'T');
+static struct MenuItem i_walk = ITEM(&i_trail, 2, 0, t_walk, 'S');
+static struct MenuItem i_who = ITEM(&i_walk, 1, 0, t_who, 'W');
 static struct MenuItem i_refresh = ITEM(&i_who, 0, 0, t_refresh, 'R');
 
 static struct Menu menu =
@@ -216,6 +221,9 @@ static int action(int what)
     case M_WHO:
         crew();
         break;
+    case M_WALK:
+        sprite_spacewalk();
+        break;
     case M_TRAIL:
         show_trail = (i_trail.Flags & CHECKED) != 0;
         redraw_map();
@@ -241,6 +249,8 @@ static int key(UWORD code)
         return action(M_REFRESH);
     case 'w': case 'W':
         return action(M_WHO);
+    case 's': case 'S':
+        return action(M_WALK);
     case 't': case 'T':
         set_checked(&i_trail, !(i_trail.Flags & CHECKED));
         return action(M_TRAIL);
@@ -277,6 +287,11 @@ static void run(void)
             if (++ticks >= TICKS_PER_SEC)
             {
                 ticks = 0;
+                if (have_pos && --walk_countdown <= 0)
+                {
+                    sprite_spacewalk();
+                    walk_countdown = WALK_EVERY_SECS;
+                }
                 if (--countdown <= 0)
                     update();
                 else

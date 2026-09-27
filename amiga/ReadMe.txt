@@ -19,10 +19,13 @@ Running
 -------
 Double-click the ISSTracker icon, or type ISSTracker in a Shell.
 
-The position is refreshed every minute. Keys (also in the menu):
+The position is refreshed every minute, and every couple of
+minutes an astronaut steps out for a spacewalk around the
+station. Keys (also in the menu):
 
    R        refresh now
    W        who is in space right now
+   S        send the astronaut on a spacewalk
    T        ground track on/off
    N        night shading on/off
    Q, Esc   quit (or click the close gadget)

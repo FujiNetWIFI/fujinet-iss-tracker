@@ -1,11 +1,15 @@
 /**
  * @brief   ISS Tracker
  * @license gpl v. 3, see LICENSE for details.
- * @verbose ISS hardware sprite with colour cycling
+ * @verbose ISS hardware sprite with colour cycling, plus a spacewalker
  *
- * Sprite 2 is requested because its colour registers (21-23) are reserved
- * for it by the palette (tools/png2planar.py). Sprites 0/1 belong to the
- * mouse pointer.
+ * Sprite 2 is requested for the ISS because its colour registers (21-23)
+ * are reserved for it by the palette (tools/png2planar.py). Sprites 0/1
+ * belong to the mouse pointer. The astronaut uses the other sprite of the
+ * same pair, so it shares those colours: a white suit, a gold visor that
+ * shimmers with the solar arrays and a chest light pulsing with the beacon.
+ * The lower numbered sprite has display priority, so the astronaut passes
+ * behind the station as it goes in and out of the hatch.
  */
 
 #include <string.h>
@@ -14,16 +18,26 @@
 #include <intuition/intuitionbase.h>
 #include <proto/exec.h>
 #include <proto/graphics.h>
+#include "geo.h"
 #include "sprite.h"
 
-#define SPR_H 7
+#define SPR_H 7                /* both sprites: solar panel height */
 #define SPR_W 16
 #define WANT_SPRITE 2
+
+#define ASTRO_W 5              /* drawn width within the 16 pixel sprite */
+#define WALK_OUT 15            /* ticks drifting out of the hatch */
+#define WALK_LAP 90            /* ticks for one lap around the station */
+#define WALK_STEPS (WALK_OUT + WALK_LAP + WALK_OUT)
+#define WALK_RX 15             /* lap radius, pixels */
+#define WALK_RY 10
+#define FRAME_TICKS 3          /* ticks per swimming frame */
+#define COLOUR_TICKS 2         /* ticks per colour cycle step */
 
 extern struct IntuitionBase *IntuitionBase;
 
 /* '1' solar arrays, '2' truss and modules, '3' beacon */
-static const char *const art[SPR_H] =
+static const char *const iss_art[SPR_H] =
 {
     "11.11......11.11",
     "11.11......11.11",
@@ -32,6 +46,29 @@ static const char *const art[SPR_H] =
     "11.11..22..11.11",
     "11.11......11.11",
     "11.11......11.11",
+};
+
+/* '2' suit, '1' gold visor, '3' chest light: two swimming frames */
+static const char *const astro_art[2][SPR_H] =
+{
+    {
+        ".222.",
+        ".212.",
+        "22222",
+        ".232.",
+        ".222.",
+        ".2.2.",
+        "2...2",
+    },
+    {
+        ".222.",
+        ".212.",
+        ".222.",
+        "22322",
+        ".222.",
+        "..2..",
+        ".2.2.",
+    },
 };
 
 /* Beacon pulse and solar array shimmer, 12-bit RGB */
@@ -43,42 +80,48 @@ static const UWORD arrays[] =
 #define NBEACON (sizeof beacon / sizeof beacon[0])
 #define NARRAYS (sizeof arrays / sizeof arrays[0])
 
-static struct SimpleSprite ss;
-static struct Screen *owner;
-static UWORD *shown;      /* chip RAM: posctl, SPR_H rows of 2 words, end */
-static UWORD *blank;
-static int num = -1;
-static int sx, sy;
-static int hidden;
-static int suspended;
-static unsigned phase;
-static int reg;           /* first colour register of this sprite pair */
-
+/* posctl, SPR_H rows of 2 words, end-of-sprite words */
 #define DATA_WORDS (2 + SPR_H * 2 + 2)
+
+typedef struct
+{
+    struct SimpleSprite ss;
+    int num;                   /* hardware sprite, or -1 */
+    UWORD *image;              /* image currently shown, 0 when blanked */
+} hw_sprite;
+
+static struct Screen *owner;
+static hw_sprite iss = { { 0 }, -1, 0 };
+static hw_sprite astro = { { 0 }, -1, 0 };
+
+/* chip RAM: ISS image, two astronaut frames, blank */
+static UWORD *chip;
+#define CHIP_IMAGES 4
+static UWORD *iss_img, *astro_img[2], *blank;
+
+static int sx, sy;             /* ISS sprite position, off map until a fix */
+static int map_y0 = -1;        /* map top row, from sprite_place */
+static int suspended;
+static unsigned ticks;
+static int reg;                /* first colour register of the sprite pair */
+static int walk = -1;          /* spacewalk step, -1 when inside */
+
+static void sprite_tick_visual(void);
 
 static void set_rgb(int r, UWORD c)
 {
     SetRGB4(&owner->ViewPort, r, (c >> 8) & 15, (c >> 4) & 15, c & 15);
 }
 
-int sprite_open(struct Screen *s)
+static void build(UWORD *img, const char *const *art, int width)
 {
     int row, col;
-
-    owner = s;
-    shown = AllocMem(DATA_WORDS * 2, MEMF_CHIP | MEMF_CLEAR);
-    blank = AllocMem(DATA_WORDS * 2, MEMF_CHIP | MEMF_CLEAR);
-    if (!shown || !blank)
-    {
-        sprite_close();
-        return 0;
-    }
 
     for (row = 0; row < SPR_H; row++)
     {
         UWORD p0 = 0, p1 = 0;
 
-        for (col = 0; col < SPR_W; col++)
+        for (col = 0; col < width; col++)
         {
             char c = art[row][col];
             UWORD bit = 0x8000 >> col;
@@ -88,93 +131,168 @@ int sprite_open(struct Screen *s)
             if (c == '2' || c == '3')
                 p1 |= bit;
         }
-        shown[2 + row * 2] = p0;
-        shown[2 + row * 2 + 1] = p1;
+        img[2 + row * 2] = p0;
+        img[2 + row * 2 + 1] = p1;
     }
+}
 
-    memset(&ss, 0, sizeof ss);
-    ss.height = SPR_H;
-    num = GetSprite(&ss, WANT_SPRITE);
-    if (num < 0)
-        num = GetSprite(&ss, WANT_SPRITE + 1);
-    if (num < 0)
-        num = GetSprite(&ss, -1);
-    if (num < 0)
+/* Show img (or blank it with 0) and move the sprite to x, y. */
+static void show(hw_sprite *s, UWORD *img, int x, int y)
+{
+    if (s->num < 0)
+        return;
+    if (s->image != img)
+    {
+        ChangeSprite(&owner->ViewPort, &s->ss, (APTR)(img ? img : blank));
+        s->image = img;
+    }
+    MoveSprite(&owner->ViewPort, &s->ss, x, y);
+}
+
+int sprite_open(struct Screen *s)
+{
+    owner = s;
+    chip = AllocMem(CHIP_IMAGES * DATA_WORDS * 2, MEMF_CHIP | MEMF_CLEAR);
+    if (!chip)
+        return 0;
+    iss_img = chip;
+    astro_img[0] = chip + DATA_WORDS;
+    astro_img[1] = chip + 2 * DATA_WORDS;
+    blank = chip + 3 * DATA_WORDS;
+    build(iss_img, iss_art, SPR_W);
+    build(astro_img[0], astro_art[0], ASTRO_W);
+    build(astro_img[1], astro_art[1], ASTRO_W);
+
+    iss.ss.height = SPR_H;
+    iss.num = GetSprite(&iss.ss, WANT_SPRITE);
+    if (iss.num < 0)
+        iss.num = GetSprite(&iss.ss, WANT_SPRITE + 1);
+    if (iss.num < 0)
+        iss.num = GetSprite(&iss.ss, -1);
+    if (iss.num < 0)
     {
         sprite_close();
         return 0;
     }
-    reg = 16 + (num & 6) * 2;
+    reg = 16 + (iss.num & 6) * 2;
 
-    /* Park it off the map until the first fix arrives */
+    /* The partner sprite shares the ISS colours; without it the tracker
+     * simply has no spacewalks. */
+    astro.ss.height = SPR_H;
+    astro.num = GetSprite(&astro.ss, iss.num ^ 1);
+
+    /* Park them off the map until the first fix arrives */
     sx = -SPR_W;
     sy = 0;
-    hidden = 1;
-    ChangeSprite(&owner->ViewPort, &ss, (APTR)blank);
+    show(&iss, 0, sx, sy);
+    show(&astro, 0, sx, sy);
     return 1;
 }
 
 void sprite_close(void)
 {
-    if (num >= 0)
+    if (astro.num >= 0)
     {
-        FreeSprite(num);
-        num = -1;
+        FreeSprite(astro.num);
+        astro.num = -1;
     }
-    if (shown)
+    if (iss.num >= 0)
     {
-        FreeMem(shown, DATA_WORDS * 2);
-        shown = 0;
+        FreeSprite(iss.num);
+        iss.num = -1;
     }
-    if (blank)
+    if (chip)
     {
-        FreeMem(blank, DATA_WORDS * 2);
-        blank = 0;
+        FreeMem(chip, CHIP_IMAGES * DATA_WORDS * 2);
+        chip = 0;
     }
 }
 
 void sprite_place(int x, int y, int top)
 {
-    if (num < 0)
-        return;
     sx = x - SPR_W / 2;
     sy = top + y - SPR_H / 2;
-    MoveSprite(&owner->ViewPort, &ss, sx, sy);
-    if (hidden && !suspended && IntuitionBase->FirstScreen == owner)
+    map_y0 = top;
+    sprite_tick_visual();
+}
+
+void sprite_spacewalk(void)
+{
+    if (astro.num >= 0 && walk < 0 && map_y0 >= 0)
+        walk = 0;
+}
+
+/* Astronaut position for the current walk step, relative to the ISS. */
+static void walk_offset(int *dx, int *dy)
+{
+    long ang = 27000L;         /* straight up out of the hatch */
+    long r = WALK_OUT;         /* radius in 1/WALK_OUT units */
+
+    if (walk < WALK_OUT)
+        r = walk;
+    else if (walk < WALK_OUT + WALK_LAP)
+        ang += (long)(walk - WALK_OUT) * 36000L / WALK_LAP;
+    else
+        r = WALK_STEPS - walk;
+
+    *dx = (int)(r * WALK_RX * geo_cos(ang) / (WALK_OUT * GEO_ONE));
+    *dy = (int)(r * WALK_RY * geo_sin(ang) / (WALK_OUT * GEO_ONE));
+}
+
+static void sprite_tick_visual(void)
+{
+    int front = IntuitionBase->FirstScreen == owner && sx > -SPR_W &&
+                !suspended;
+
+    show(&iss, front ? iss_img : 0, sx, sy);
+
+    if (front && walk >= 0)
     {
-        ChangeSprite(&owner->ViewPort, &ss, (APTR)shown);
-        hidden = 0;
+        int dx, dy, ax, ay;
+
+        walk_offset(&dx, &dy);
+        /* centre the 5x7 figure on the ISS centre plus the offset, kept
+         * on the map when the station is near an edge */
+        ax = sx + SPR_W / 2 + dx - ASTRO_W / 2;
+        ay = sy + dy;
+        if (ax < 0)
+            ax = 0;
+        if (ax > 319 - ASTRO_W)
+            ax = 319 - ASTRO_W;
+        if (ay < map_y0)
+            ay = map_y0;
+        if (ay > map_y0 + MAP_H - SPR_H)
+            ay = map_y0 + MAP_H - SPR_H;
+        show(&astro, astro_img[(ticks / FRAME_TICKS) & 1], ax, ay);
     }
+    else
+        show(&astro, 0, sx, sy);
 }
 
 void sprite_tick(void)
 {
-    int front;
-
-    if (num < 0)
+    if (iss.num < 0)
         return;
 
-    phase++;
-    set_rgb(reg + 1, arrays[phase % NARRAYS]);
-    set_rgb(reg + 2, 0xCCD);
-    set_rgb(reg + 3, beacon[phase % NBEACON]);
+    ticks++;
+    if (ticks % COLOUR_TICKS == 0)
+    {
+        unsigned phase = ticks / COLOUR_TICKS;
 
-    front = IntuitionBase->FirstScreen == owner && sx > -SPR_W && !suspended;
-    if (front && hidden)
-    {
-        ChangeSprite(&owner->ViewPort, &ss, (APTR)shown);
-        hidden = 0;
+        set_rgb(reg + 1, arrays[phase % NARRAYS]);
+        set_rgb(reg + 2, 0xCCD);
+        set_rgb(reg + 3, beacon[phase % NBEACON]);
     }
-    else if (!front && !hidden)
-    {
-        ChangeSprite(&owner->ViewPort, &ss, (APTR)blank);
-        hidden = 1;
-    }
-    MoveSprite(&owner->ViewPort, &ss, sx, sy);
+
+    if (walk >= 0 && ++walk >= WALK_STEPS)
+        walk = -1;
+
+    sprite_tick_visual();
 }
 
 void sprite_suspend(int on)
 {
     suspended = on;
-    sprite_tick();
+    if (iss.num >= 0)
+        sprite_tick_visual();
 }
