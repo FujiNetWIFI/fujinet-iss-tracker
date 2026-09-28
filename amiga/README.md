@@ -16,14 +16,18 @@ shows:
 - latitude, longitude and UTC time in a panel below, ticking live, with
   the country or ocean the ISS is over;
 - optionally your home: a crosshair on the map, the distance to the ISS,
-  and an alert when the ISS comes over your horizon.
+  and an alert when the ISS comes over your horizon;
+- now and then (every 5–15 minutes, or on **U**) a flying saucer that
+  swoops in from off the map, hovers while its little green pilot pokes its
+  head out for a look around, and shrinks away off another edge.
 
 It plays Paula sound effects: a sonar ping for each fix, three pings when
-the ISS comes into view of home, and NASA "Quindar" beeps as an astronaut
-goes out and comes back in. After 10 idle minutes (or **B**) it switches to
+the ISS comes into view of home, NASA "Quindar" beeps as an astronaut
+goes out and comes back in, and a theremin warble while a UFO is about. After 10 idle minutes (or **B**) it switches to
 a screen saver with just the map and the ISS.
 
-Press **W** to open a window listing who is in space. The ISS position comes
+Press **W** to open a window listing who is in space, and **H** for a
+window listing the keys and the current settings. The ISS position comes
 from [Open Notify](http://open-notify.org/)
 (`http://api.open-notify.org/iss-now.json`) and refreshes every 60 seconds.
 The crew list comes from `astros.json`.
@@ -52,7 +56,7 @@ Requires:
 export FUJINET_NIO_LIB=/path/to/fujinet-nio-lib
 make            # -> build/ISSTracker
 make disk       # -> dist/ISSTracker.adf
-make test       # host-side tests of the JSON/geo/terminator logic
+make test       # host-side tests of the JSON/geo/terminator/UFO path logic
 ```
 
 If `NIO_WORKSPACE` is set (fujinet-nio workspace), `FUJINET_NIO_LIB`
@@ -103,9 +107,11 @@ python3 tools/png2planar.py --source land_shallow_topo_2048.jpg \
 | R | Refresh now |
 | W | Who's in space |
 | S | Send the astronaut on a spacewalk now |
+| U | UFO sighting now |
 | V | Viewing circle on/off |
 | M | Sound on/off |
 | B | Screen saver (any key or click returns) |
+| H (or ?) | Help: the keys and the current settings |
 | T | Ground track on/off |
 | N | Night shading on/off |
 | Q / Esc | Quit (or use the close gadget) |
@@ -143,13 +149,19 @@ The display uses these colour registers:
 |---|---|
 | Bitplanes 0–3 | The map. |
 | Bitplane 4 | The night mask. Colour *n* + 16 is the dark twin of map colour *n*. |
-| 4 | Never drawn by day. Its twin, 20, is the city light colour, so a light is pen 4 on the night side. |
+| 4 | Never part of the map. Its twin, 20, is the city light colour, so a light is pen 4 on the night side; 4 itself is the UFO pilot's green. |
 | 1–3, 5–7 | Reserved for UI pens. Their twins are the mouse pointer (17–19) and the ISS sprite pair (21–23), which the astronaut shares. |
 | 0, 8–15 | The nine map colours that remain. |
 
 The map is composed in an off-screen chip RAM bitmap: terrain, then the
 night mask, then the trail. It is then blitted into the window, so menus and
 the crew window are never drawn over.
+
+No hardware sprite is left for the UFO (sprites 4–7 would share night map
+colours), so it is a masked blit. Each frame the map under its old and new
+positions is copied into a scratch bitmap, the saucer is cut in there, and
+the result is blitted into the window in one go, so it never flickers. A
+second timer runs at 25 frames a second only while one is flying.
 
 The terminator comes from the solar declination and equation of time, using
 integer Q14 trigonometry. For each column, a binary search finds the row
@@ -160,11 +172,14 @@ where the sun sets.
 | File | Purpose |
 |---|---|
 | `src/main.c` | Startup, timer, event loop, menus and keys |
-| `src/screen.c` | Screen, window, map compositor, status panel |
+| `src/screen.c` | Screen, window, map compositor, status panel, pop-up windows |
 | `src/sprite.c` | ISS and astronaut hardware sprites, colour cycling, spacewalk path |
 | `src/night.c` | Night mask bitplane |
 | `src/trail.c` | Ground track ring buffer |
 | `src/who.c` | "Who's in space" window |
+| `src/help.c` | Help window: keys and current settings |
+| `src/ufo.c` | UFO sightings: saucer images and flicker-free blitting |
+| `src/ufo_path.c` | UFO flight path, timeline and pixel art (portable, host-tested) |
 | `src/fetch.c` | HTTP GET through fujinet-nio-lib, ISS response parsing |
 | `src/json.c` | Minimal JSON value and array extraction |
 | `src/geo.c` | Coordinates, UTC, fixed-point trig and inverse trig, great-circle maths, dead reckoning, terminator |

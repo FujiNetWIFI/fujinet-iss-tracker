@@ -33,6 +33,12 @@ const struct BitMap *screen_map_bitmap(void);   /* the composed map */
 int screen_saver(int on);
 struct Window *screen_saver_window(void);
 
+/* A window centred over the map, filled with the ocean colour, for a
+ * list; 0 if it can't be opened. screen_popup_wait() then waits for a
+ * key, a click or the close gadget, and closes it. */
+struct Window *screen_popup(const char *title, int width, int height);
+void screen_popup_wait(struct Window *w);
+
 /* Status panel. */
 void screen_draw_position(const iss_pos *pos);
 void screen_status(const char *text, int pen);

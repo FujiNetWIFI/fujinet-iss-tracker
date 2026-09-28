@@ -407,7 +407,10 @@ static void sighting(void)
 static void ufo_next_frame(void)
 {
     if (ufo_frame(screen_map_rp(), screen_map_y(), screen_map_bitmap()))
+    {
+        sound_ufo(1);            /* back to the warble after other effects */
         timer_start(&fast, UFO_MICROS);
+    }
     else
     {
         sound_ufo(0);

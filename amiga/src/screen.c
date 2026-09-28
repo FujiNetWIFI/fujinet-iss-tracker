@@ -368,6 +368,61 @@ int screen_saver(int on)
     return saver != 0;
 }
 
+struct Window *screen_popup(const char *title, int width, int height)
+{
+    struct NewWindow nw;
+    struct Window *w;
+    struct RastPort *rp;
+
+    memset(&nw, 0, sizeof nw);
+    nw.Width = width;
+    nw.Height = height;
+    nw.LeftEdge = (scr->Width - width) / 2;
+    nw.TopEdge = (scr->Height - height) / 2;
+    nw.DetailPen = (UBYTE)-1;
+    nw.BlockPen = (UBYTE)-1;
+    nw.IDCMPFlags = IDCMP_CLOSEWINDOW | IDCMP_VANILLAKEY | IDCMP_MOUSEBUTTONS;
+    nw.Flags = WFLG_CLOSEGADGET | WFLG_DRAGBAR | WFLG_DEPTHGADGET |
+               WFLG_ACTIVATE | WFLG_RMBTRAP | WFLG_SMART_REFRESH |
+               WFLG_NOCAREREFRESH;
+    nw.Title = (UBYTE *)title;
+    nw.Screen = scr;
+    nw.Type = CUSTOMSCREEN;
+
+    w = OpenWindow(&nw);
+    if (!w)
+        return 0;
+    rp = w->RPort;
+    SetFont(rp, scr->RastPort.Font);
+    SetDrMd(rp, JAM1);
+    SetAPen(rp, PEN_OCEAN);
+    RectFill(rp, w->BorderLeft, w->BorderTop,
+             w->Width - w->BorderRight - 1, w->Height - w->BorderBottom - 1);
+    return w;
+}
+
+void screen_popup_wait(struct Window *w)
+{
+    struct IntuiMessage *msg;
+    int done = 0;
+
+    while (!done)
+    {
+        WaitPort(w->UserPort);
+        while ((msg = (struct IntuiMessage *)GetMsg(w->UserPort)) != 0)
+        {
+            ULONG cls = msg->Class;
+            UWORD code = msg->Code;
+
+            ReplyMsg((struct Message *)msg);
+            if (cls == IDCMP_CLOSEWINDOW || cls == IDCMP_VANILLAKEY ||
+                (cls == IDCMP_MOUSEBUTTONS && code == SELECTUP))
+                done = 1;
+        }
+    }
+    CloseWindow(w);
+}
+
 static void format_coord(char *out, long v, char pos, char neg)
 {
     char hemi = v < 0 ? neg : pos;

@@ -5,9 +5,7 @@
  */
 
 #include <string.h>
-#include <proto/exec.h>
 #include <proto/graphics.h>
-#include <proto/intuition.h>
 #include "help.h"
 #include "map_data.h"
 #include "screen.h"
@@ -63,12 +61,10 @@ static void put(struct RastPort *rp, int x, int y, int pen, const char *s)
 void help_show(int trail, int night, int circle, int sound)
 {
     static const char heading[] = "ISS Tracker keys";
-    struct NewWindow nw;
     struct Window *w;
     struct RastPort *rp;
-    struct IntuiMessage *msg;
     int state[4];
-    int i, y, done = 0;
+    int i, y;
     int top = scr->BarHeight + 1;
 
     state[T_TRAIL] = trail;
@@ -76,31 +72,11 @@ void help_show(int trail, int night, int circle, int sound)
     state[T_CIRCLE] = circle;
     state[T_SOUND] = sound;
 
-    memset(&nw, 0, sizeof nw);
-    nw.Width = HELP_W;
-    nw.Height = top + 6 + LINE_H + GAP + NKEYS * LINE_H + GAP +
-                NNOTES * LINE_H + 6;
-    nw.LeftEdge = (scr->Width - HELP_W) / 2;
-    nw.TopEdge = (scr->Height - nw.Height) / 2;
-    nw.DetailPen = (UBYTE)-1;
-    nw.BlockPen = (UBYTE)-1;
-    nw.IDCMPFlags = IDCMP_CLOSEWINDOW | IDCMP_VANILLAKEY | IDCMP_MOUSEBUTTONS;
-    nw.Flags = WFLG_CLOSEGADGET | WFLG_DRAGBAR | WFLG_DEPTHGADGET |
-               WFLG_ACTIVATE | WFLG_RMBTRAP | WFLG_SMART_REFRESH |
-               WFLG_NOCAREREFRESH;
-    nw.Title = (UBYTE *)"Help";
-    nw.Screen = scr;
-    nw.Type = CUSTOMSCREEN;
-
-    w = OpenWindow(&nw);
+    w = screen_popup("Help", HELP_W, top + 6 + LINE_H + GAP + NKEYS * LINE_H +
+                                     GAP + NNOTES * LINE_H + 6);
     if (!w)
         return;
     rp = w->RPort;
-    SetFont(rp, scr->RastPort.Font);
-    SetDrMd(rp, JAM1);
-    SetAPen(rp, PEN_OCEAN);
-    RectFill(rp, w->BorderLeft, w->BorderTop,
-             w->Width - w->BorderRight - 1, w->Height - w->BorderBottom - 1);
 
     y = w->BorderTop + 4 + rp->TxBaseline;
     put(rp, (HELP_W - (int)strlen(heading) * 8) / 2, y, PEN_LABEL, heading);
@@ -122,19 +98,5 @@ void help_show(int trail, int night, int circle, int sound)
     for (i = 0; i < NNOTES; i++, y += LINE_H)
         put(rp, KEY_X, y, PEN_RULE, notes[i]);
 
-    while (!done)
-    {
-        WaitPort(w->UserPort);
-        while ((msg = (struct IntuiMessage *)GetMsg(w->UserPort)) != 0)
-        {
-            ULONG cls = msg->Class;
-            UWORD code = msg->Code;
-
-            ReplyMsg((struct Message *)msg);
-            if (cls == IDCMP_CLOSEWINDOW || cls == IDCMP_VANILLAKEY ||
-                (cls == IDCMP_MOUSEBUTTONS && code == SELECTUP))
-                done = 1;
-        }
-    }
-    CloseWindow(w);
+    screen_popup_wait(w);
 }

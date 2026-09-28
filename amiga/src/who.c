@@ -6,9 +6,7 @@
 
 #include <string.h>
 #include <stdio.h>
-#include <proto/exec.h>
 #include <proto/graphics.h>
-#include <proto/intuition.h>
 #include "fetch.h"
 #include "json.h"
 #include "map_data.h"
@@ -36,15 +34,13 @@ static void put(struct RastPort *rp, int x, int y, int pen, const char *s,
 
 unsigned char who_show(void)
 {
-    struct NewWindow nw;
     struct Window *w;
     struct RastPort *rp;
-    struct IntuiMessage *msg;
     const char *end, *cur = 0, *obj, *obj_end;
     char name[NAME_COLS + 8], craft[CRAFT_COLS + 8], head[40];
     unsigned short len;
     unsigned char err;
-    int count = 0, rows, max_rows, y, done = 0;
+    int count = 0, rows, max_rows, y;
     int top = scr->BarHeight + 1;
 
     err = fetch_url(ASTROS_URL, buf, sizeof buf, &len);
@@ -60,30 +56,11 @@ unsigned char who_show(void)
     max_rows = (scr->Height - 16 - top - 30) / LINE_H;
     rows = count < max_rows ? count : max_rows;
 
-    memset(&nw, 0, sizeof nw);
-    nw.Width = WHO_W;
-    nw.Height = top + 8 + LINE_H + 6 + rows * LINE_H + 8;
-    nw.LeftEdge = (scr->Width - WHO_W) / 2;
-    nw.TopEdge = (scr->Height - nw.Height) / 2;
-    nw.DetailPen = (UBYTE)-1;
-    nw.BlockPen = (UBYTE)-1;
-    nw.IDCMPFlags = IDCMP_CLOSEWINDOW | IDCMP_VANILLAKEY | IDCMP_MOUSEBUTTONS;
-    nw.Flags = WFLG_CLOSEGADGET | WFLG_DRAGBAR | WFLG_DEPTHGADGET |
-               WFLG_ACTIVATE | WFLG_RMBTRAP | WFLG_SMART_REFRESH |
-               WFLG_NOCAREREFRESH;
-    nw.Title = (UBYTE *)"Who's in space?";
-    nw.Screen = scr;
-    nw.Type = CUSTOMSCREEN;
-
-    w = OpenWindow(&nw);
+    w = screen_popup("Who's in space?", WHO_W,
+                     top + 8 + LINE_H + 6 + rows * LINE_H + 8);
     if (!w)
         return 0;
     rp = w->RPort;
-    SetFont(rp, scr->RastPort.Font);
-    SetDrMd(rp, JAM1);
-    SetAPen(rp, PEN_OCEAN);
-    RectFill(rp, w->BorderLeft, w->BorderTop,
-             w->Width - w->BorderRight - 1, w->Height - w->BorderBottom - 1);
 
     y = w->BorderTop + 6 + rp->TxBaseline;
     sprintf(head, "%d %s in space", count, count == 1 ? "person" : "people");
@@ -102,20 +79,6 @@ unsigned char who_show(void)
         y += LINE_H;
     }
 
-    while (!done)
-    {
-        WaitPort(w->UserPort);
-        while ((msg = (struct IntuiMessage *)GetMsg(w->UserPort)) != 0)
-        {
-            ULONG cls = msg->Class;
-            UWORD code = msg->Code;
-
-            ReplyMsg((struct Message *)msg);
-            if (cls == IDCMP_CLOSEWINDOW || cls == IDCMP_VANILLAKEY ||
-                (cls == IDCMP_MOUSEBUTTONS && code == SELECTUP))
-                done = 1;
-        }
-    }
-    CloseWindow(w);
+    screen_popup_wait(w);
     return 0;
 }

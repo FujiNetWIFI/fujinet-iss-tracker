@@ -176,8 +176,13 @@ void sound_quindar(int start)
 
 void sound_ufo(int on)
 {
-    if (on)
-        play(ufo, UFO_LEN, UFO_RATE, UFO_LOOPS, 40);
-    else if (dev_open && playing == ufo)
-        stop();
+    if (!dev_open)
+        return;
+    if (!on)
+    {
+        if (playing == ufo)
+            stop();
+    }
+    else if (!pending || CheckIO((struct IORequest *)io))
+        play(ufo, UFO_LEN, UFO_RATE, UFO_LOOPS, 40);   /* idle: (re)start */
 }

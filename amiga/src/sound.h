@@ -25,8 +25,9 @@ void sound_alert(void);
  * 2475 Hz to end. */
 void sound_quindar(int start);
 
-/* Spooky theremin warble while a UFO is about: on to start, off to stop
- * (unless another effect has taken over). */
+/* Spooky theremin warble while a UFO is about. On starts it when the
+ * channel is idle, so calling it every frame resumes it after another
+ * effect; off stops it (and nothing else). */
 void sound_ufo(int on);
 
 #endif /* SOUND_H */
