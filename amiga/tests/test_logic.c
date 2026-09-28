@@ -10,6 +10,7 @@
 #include "../src/night.h"
 #include "../src/region.h"
 #include "../src/config.h"
+#include "../src/ufo_path.h"
 
 static int failures;
 
@@ -342,6 +343,92 @@ static void test_config(void)
     CHECK(!config_arg(&c, "WINDOW=CON:"));
 }
 
+static int art_ok(const ufo_art *a)
+{
+    int r;
+
+    for (r = 0; r < a->h; r++)
+        if ((int)strlen(a->rows[r]) != a->w)
+            return 0;
+    return 1;
+}
+
+static void test_ufo_art(void)
+{
+    int i;
+
+    for (i = 0; i < UFO_SIZES; i++)
+        CHECK(art_ok(&ufo_body[i]));
+    for (i = 1; i < UFO_SIZES; i++)
+        CHECK(ufo_body[i].w > ufo_body[i - 1].w);
+    for (i = 0; i < UFO_LOOKS; i++)
+    {
+        CHECK(art_ok(&ufo_head[i]));
+        CHECK(ufo_head[i].w == UFO_HEAD_W && ufo_head[i].h == UFO_HEAD_H);
+    }
+    CHECK(UFO_HEAD_W < ufo_body[UFO_SIZES - 1].w);
+}
+
+static int edge_side(int x, int y)
+{
+    if (x < 8) return 0;
+    if (x >= MAP_W - 8) return 1;
+    if (y < 8) return 2;
+    if (y >= MAP_H - 8) return 3;
+    return -1;
+}
+
+static void test_ufo_path(void)
+{
+    unsigned long n, seed;
+    ufo_path p;
+    ufo_pose o, first, last;
+    int step, bad = 0, prev_size, looks, max_rise;
+
+    for (n = 1; n < 400; n += 3)
+    {
+        seed = n;
+        ufo_path_init(&p, &seed);
+        prev_size = 0;
+        looks = 0;
+        max_rise = 0;
+        for (step = 0; step < UFO_STEPS; step++)
+        {
+            if (!ufo_path_step(&p, step, &o))
+            {
+                bad++;
+                continue;
+            }
+            if (o.x < 0 || o.x >= MAP_W || o.y < 0 || o.y >= MAP_H)
+                bad++;
+            if (o.size < 0 || o.size >= UFO_SIZES || o.rise < 0 ||
+                o.rise > UFO_HEAD_H || o.look < 0 || o.look >= UFO_LOOKS)
+                bad++;
+            /* the pilot only shows on the full-size, hovering saucer */
+            if (o.rise && (o.size != UFO_SIZES - 1 || step < UFO_IN ||
+                           step >= UFO_IN + UFO_HOVER))
+                bad++;
+            /* grows on the way in, shrinks on the way out */
+            if (step < UFO_IN + UFO_HOVER ? o.size < prev_size : o.size > prev_size)
+                bad++;
+            prev_size = o.size;
+            looks |= 1 << o.look;
+            if (o.rise > max_rise)
+                max_rise = o.rise;
+        }
+        CHECK(!ufo_path_step(&p, UFO_STEPS, &o));
+        ufo_path_step(&p, 0, &first);
+        ufo_path_step(&p, UFO_STEPS - 1, &last);
+        /* a speck at one edge, a speck at a different edge */
+        CHECK(first.size == 0 && last.size == 0);
+        CHECK(edge_side(first.x, first.y) >= 0);
+        CHECK(edge_side(last.x, last.y) >= 0);
+        CHECK(edge_side(first.x, first.y) != edge_side(last.x, last.y));
+        CHECK(looks == 7 && max_rise == UFO_HEAD_H);
+    }
+    CHECK(bad == 0);
+}
+
 int main(void)
 {
     test_json();
@@ -358,6 +445,8 @@ int main(void)
     test_extrapolate();
     test_regions();
     test_config();
+    test_ufo_art();
+    test_ufo_path();
 
     if (failures)
     {

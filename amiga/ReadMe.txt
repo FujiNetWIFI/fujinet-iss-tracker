@@ -23,11 +23,13 @@ Double-click the ISSTracker icon, or type ISSTracker in a Shell.
 
 The position is refreshed every minute, and every couple of
 minutes an astronaut steps out for a spacewalk around the
-station. Keys (also in the menu):
+station. Keep watching and, every so often, something else drops
+by for a look around. Keys (also in the menu):
 
    R        refresh now
    W        who is in space right now
    S        send the astronaut on a spacewalk
+   U        UFO sighting!
    T        ground track on/off
    N        night shading on/off
    V        viewing circle on/off

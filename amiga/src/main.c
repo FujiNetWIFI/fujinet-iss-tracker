@@ -32,6 +32,8 @@
 #include "sprite.h"
 #include "trail.h"
 #include "twinkle.h"
+#include "ufo.h"
+#include "ufo_path.h"
 #include "who.h"
 
 #define TICK_MICROS   100000L    /* sprite animation rate */
@@ -42,16 +44,27 @@
 #define FIRST_WALK_SECS 20       /* first spacewalk after the first fix */
 #define WALK_EVERY_SECS 120
 #define MAX_DEAD_RECKON 180      /* seconds to keep moving without a fix */
+#define UFO_MICROS    40000L     /* 25 frames a second while a UFO flies */
+#define UFO_FIRST_SECS 180       /* first sighting 3-8 minutes in ... */
+#define UFO_FIRST_SPREAD 300
+#define UFO_EVERY_SECS 300       /* ... then every 5-15 minutes */
+#define UFO_EVERY_SPREAD 600
 
 struct IntuitionBase *IntuitionBase;
 struct GfxBase *GfxBase;
 struct Library *IconBase;
 extern struct WBStartup *_WBenchMsg;
 
-static struct MsgPort *timer_port;
-static struct timerequest *timer_req;
-static int timer_open;
-static int timer_pending;
+typedef struct
+{
+    struct MsgPort *port;
+    struct timerequest *req;
+    int open;
+    int pending;
+} ticker;
+
+static ticker slow;              /* ten times a second */
+static ticker fast;              /* UFO frames, only while one flies */
 
 static config cfg;
 static iss_pos pos;              /* latest fix */
@@ -70,10 +83,12 @@ static int countdown;
 static int walk_countdown = FIRST_WALK_SECS;
 static int idle_secs;
 static int warned_nodevice;
+static unsigned long ufo_seed;
+static int ufo_countdown;
 
 /* ---- Menus (Intuition 1.3 structures) ---------------------------------- */
 
-enum { M_REFRESH, M_WHO, M_WALK, M_TRAIL, M_NIGHT, M_CIRCLE, M_SOUND,
+enum { M_REFRESH, M_WHO, M_WALK, M_UFO, M_TRAIL, M_NIGHT, M_CIRCLE, M_SOUND,
        M_SAVER, M_ABOUT, M_QUIT };
 
 #define ITEM_W (LOWCHECKWIDTH + 15 * 8 + LOWCOMMWIDTH + 4)
@@ -86,6 +101,7 @@ static struct IntuiText t_sound   = { 0, 1, JAM2, LOWCHECKWIDTH, 1, 0, (UBYTE *)
 static struct IntuiText t_circle  = { 0, 1, JAM2, LOWCHECKWIDTH, 1, 0, (UBYTE *)"Viewing circle", 0 };
 static struct IntuiText t_night   = { 0, 1, JAM2, LOWCHECKWIDTH, 1, 0, (UBYTE *)"Night shading", 0 };
 static struct IntuiText t_trail   = { 0, 1, JAM2, LOWCHECKWIDTH, 1, 0, (UBYTE *)"Ground track", 0 };
+static struct IntuiText t_ufo     = { 0, 1, JAM2, LOWCHECKWIDTH, 1, 0, (UBYTE *)"UFO sighting!", 0 };
 static struct IntuiText t_walk    = { 0, 1, JAM2, LOWCHECKWIDTH, 1, 0, (UBYTE *)"Spacewalk!", 0 };
 static struct IntuiText t_who     = { 0, 1, JAM2, LOWCHECKWIDTH, 1, 0, (UBYTE *)"Who's in space?", 0 };
 static struct IntuiText t_refresh = { 0, 1, JAM2, LOWCHECKWIDTH, 1, 0, (UBYTE *)"Refresh now", 0 };
@@ -96,14 +112,15 @@ static struct IntuiText t_refresh = { 0, 1, JAM2, LOWCHECKWIDTH, 1, 0, (UBYTE *)
       0, (APTR)&text, 0, key, 0, 0 }
 #define TOGGLE (CHECKIT | MENUTOGGLE | CHECKED)
 
-static struct MenuItem i_quit = ITEM(0, 9, 0, t_quit, 'Q');
-static struct MenuItem i_about = ITEM(&i_quit, 8, 0, t_about, '?');
-static struct MenuItem i_saver = ITEM(&i_about, 7, 0, t_saver, 'B');
-static struct MenuItem i_sound = ITEM(&i_saver, 6, TOGGLE, t_sound, 'M');
-static struct MenuItem i_circle = ITEM(&i_sound, 5, TOGGLE, t_circle, 'V');
-static struct MenuItem i_night = ITEM(&i_circle, 4, TOGGLE, t_night, 'N');
-static struct MenuItem i_trail = ITEM(&i_night, 3, TOGGLE, t_trail, 'T');
-static struct MenuItem i_walk = ITEM(&i_trail, 2, 0, t_walk, 'S');
+static struct MenuItem i_quit = ITEM(0, 10, 0, t_quit, 'Q');
+static struct MenuItem i_about = ITEM(&i_quit, 9, 0, t_about, '?');
+static struct MenuItem i_saver = ITEM(&i_about, 8, 0, t_saver, 'B');
+static struct MenuItem i_sound = ITEM(&i_saver, 7, TOGGLE, t_sound, 'M');
+static struct MenuItem i_circle = ITEM(&i_sound, 6, TOGGLE, t_circle, 'V');
+static struct MenuItem i_night = ITEM(&i_circle, 5, TOGGLE, t_night, 'N');
+static struct MenuItem i_trail = ITEM(&i_night, 4, TOGGLE, t_trail, 'T');
+static struct MenuItem i_ufo = ITEM(&i_trail, 3, 0, t_ufo, 'U');
+static struct MenuItem i_walk = ITEM(&i_ufo, 2, 0, t_walk, 'S');
 static struct MenuItem i_who = ITEM(&i_walk, 1, 0, t_who, 'W');
 static struct MenuItem i_refresh = ITEM(&i_who, 0, 0, t_refresh, 'R');
 
@@ -147,43 +164,43 @@ static void read_settings(int argc, char **argv)
 
 /* ---- Timer ------------------------------------------------------------- */
 
-static int timer_init(void)
+static int timer_init(ticker *t)
 {
-    timer_port = CreatePort(0, 0);
-    if (!timer_port)
+    t->port = CreatePort(0, 0);
+    if (!t->port)
         return 0;
-    timer_req = (struct timerequest *)CreateExtIO(timer_port, sizeof *timer_req);
-    if (!timer_req)
+    t->req = (struct timerequest *)CreateExtIO(t->port, sizeof *t->req);
+    if (!t->req)
         return 0;
-    if (OpenDevice((STRPTR)TIMERNAME, UNIT_VBLANK, (struct IORequest *)timer_req, 0))
+    if (OpenDevice((STRPTR)TIMERNAME, UNIT_VBLANK, (struct IORequest *)t->req, 0))
         return 0;
-    timer_open = 1;
+    t->open = 1;
     return 1;
 }
 
-static void timer_start(void)
+static void timer_start(ticker *t, long micros)
 {
-    timer_req->tr_node.io_Command = TR_ADDREQUEST;
-    timer_req->tr_time.tv_secs = 0;
-    timer_req->tr_time.tv_micro = TICK_MICROS;
-    SendIO((struct IORequest *)timer_req);
-    timer_pending = 1;
+    t->req->tr_node.io_Command = TR_ADDREQUEST;
+    t->req->tr_time.tv_secs = 0;
+    t->req->tr_time.tv_micro = micros;
+    SendIO((struct IORequest *)t->req);
+    t->pending = 1;
 }
 
-static void timer_cleanup(void)
+static void timer_cleanup(ticker *t)
 {
-    if (timer_pending)
+    if (t->pending)
     {
-        AbortIO((struct IORequest *)timer_req);
-        WaitIO((struct IORequest *)timer_req);
-        timer_pending = 0;
+        AbortIO((struct IORequest *)t->req);
+        WaitIO((struct IORequest *)t->req);
+        t->pending = 0;
     }
-    if (timer_open)
-        CloseDevice((struct IORequest *)timer_req);
-    if (timer_req)
-        DeleteExtIO((struct IORequest *)timer_req);
-    if (timer_port)
-        DeletePort(timer_port);
+    if (t->open)
+        CloseDevice((struct IORequest *)t->req);
+    if (t->req)
+        DeleteExtIO((struct IORequest *)t->req);
+    if (t->port)
+        DeletePort(t->port);
 }
 
 /* ---- Live position ----------------------------------------------------- */
@@ -214,7 +231,7 @@ static void show_live(void)
     sprite_place(geo_lon_to_x(est.lon_h), geo_lat_to_y(est.lat_h),
                  screen_map_y());
     screen_draw_position(&est);
-    if (show_circle)
+    if (show_circle && !ufo_active())
         footprint_show(screen_map_rp(), screen_map_y(), est.lat_h, est.lon_h);
 
     now_in = 0;
@@ -363,6 +380,28 @@ static void spacewalk(void)
         sound_quindar(1);
 }
 
+/* A saucer drops by. The footprint steps aside and the lights stop
+ * twinkling until it has gone, so nothing else draws over it. */
+static void sighting(void)
+{
+    if (!fast.open || !ufo_start(&ufo_seed))
+        return;
+    footprint_hide();
+    sound_ufo(1);
+    timer_start(&fast, UFO_MICROS);
+}
+
+static void ufo_next_frame(void)
+{
+    if (ufo_frame(screen_map_rp(), screen_map_y(), screen_map_bitmap()))
+        timer_start(&fast, UFO_MICROS);
+    else
+    {
+        sound_ufo(0);
+        show_live();
+    }
+}
+
 static void saver(int on)
 {
     screen_saver(on);
@@ -383,6 +422,9 @@ static int action(int what)
         break;
     case M_WALK:
         spacewalk();
+        break;
+    case M_UFO:
+        sighting();
         break;
     case M_TRAIL:
         show_trail = (i_trail.Flags & CHECKED) != 0;
@@ -424,6 +466,8 @@ static int key(UWORD code)
         return action(M_WHO);
     case 's': case 'S':
         return action(M_WALK);
+    case 'u': case 'U':
+        return action(M_UFO);
     case 't': case 'T':
         set_checked(&i_trail, !(i_trail.Flags & CHECKED));
         return action(M_TRAIL);
@@ -449,7 +493,7 @@ static void tick(void)
 {
     if (sprite_tick())
         sound_quindar(0);
-    if (have_pos && show_night)
+    if (have_pos && show_night && !ufo_active())
         twinkle_tick(screen_map_rp(), screen_map_y(), screen_map_bitmap(),
                      geo_lon_to_x(est.lon_h), geo_lat_to_y(est.lat_h));
 }
@@ -467,6 +511,11 @@ static void second(void)
         spacewalk();
         walk_countdown = WALK_EVERY_SECS;
     }
+    if (--ufo_countdown <= 0)
+    {
+        sighting();
+        ufo_countdown = UFO_EVERY_SECS + (int)(ufo_rand(&ufo_seed) % UFO_EVERY_SPREAD);
+    }
     if (!screen_saver_window() && cfg.saver_minutes > 0 &&
         ++idle_secs >= cfg.saver_minutes * 60)
         saver(1);
@@ -476,35 +525,53 @@ static void second(void)
         screen_countdown(countdown);
 }
 
+static void ufo_init(void)
+{
+    struct DateStamp ds;
+
+    DateStamp(&ds);
+    ufo_seed = (unsigned long)ds.ds_Days * 1440UL * 3000UL +
+               (unsigned long)ds.ds_Minute * 3000UL + (unsigned long)ds.ds_Tick;
+    ufo_countdown = UFO_FIRST_SECS + (int)(ufo_rand(&ufo_seed) % UFO_FIRST_SPREAD);
+}
+
 static void run(void)
 {
     ULONG win_sig = 1UL << win->UserPort->mp_SigBit;
-    ULONG tmr_sig = 1UL << timer_port->mp_SigBit;
+    ULONG tmr_sig = 1UL << slow.port->mp_SigBit;
+    ULONG fast_sig = fast.open ? 1UL << fast.port->mp_SigBit : 0;
     int ticks = 0;
     int running = 1;
 
     redraw_map();
     update();
-    timer_start();
+    timer_start(&slow, TICK_MICROS);
 
     while (running)
     {
         struct Window *sv = screen_saver_window();
         ULONG sv_sig = sv ? 1UL << sv->UserPort->mp_SigBit : 0;
-        ULONG sigs = Wait(win_sig | tmr_sig | sv_sig);
+        ULONG sigs = Wait(win_sig | tmr_sig | fast_sig | sv_sig);
         struct IntuiMessage *msg;
+
+        if ((sigs & fast_sig) && fast.pending)
+        {
+            WaitIO((struct IORequest *)fast.req);
+            fast.pending = 0;
+            ufo_next_frame();
+        }
 
         if (sigs & tmr_sig)
         {
-            WaitIO((struct IORequest *)timer_req);
-            timer_pending = 0;
+            WaitIO((struct IORequest *)slow.req);
+            slow.pending = 0;
             tick();
             if (++ticks >= TICKS_PER_SEC)
             {
                 ticks = 0;
                 second();
             }
-            timer_start();
+            timer_start(&slow, TICK_MICROS);
         }
 
         if (sv && (sigs & sv_sig))
@@ -566,13 +633,16 @@ int main(int argc, char **argv)
     if (!show_circle)
         i_circle.Flags &= ~CHECKED;
 
-    if (!timer_init())
+    if (!timer_init(&slow))
         goto out;
+    timer_init(&fast);           /* without it: no UFOs, nothing else lost */
     if (!screen_open(&menu, &why))
         goto out;
     me->pr_WindowPtr = win;      /* DOS requesters on our screen, not WB */
     sprite_open(scr);
     twinkle_init();
+    ufo_open();
+    ufo_init();
     sound_open();
     sound_enable(cfg.sound);
 
@@ -583,10 +653,12 @@ out:
     me->pr_WindowPtr = old_window;
     fetch_shutdown();
     sound_close();
+    timer_cleanup(&fast);
+    ufo_close();
     twinkle_free();
     sprite_close();
     screen_close();
-    timer_cleanup();
+    timer_cleanup(&slow);
     if (why && IntuitionBase)
     {
         struct IntuiText body = { 0, 1, JAM1, 12, 8, 0, (UBYTE *)why, 0 };

@@ -23,6 +23,13 @@ extern struct GfxBase *GfxBase;
 #define PING_LEN   4000            /* ... then 100 ms of silence */
 #define QUINDAR_LEN 8              /* one cycle of sine */
 #define QUINDAR_MS 250L
+#define UFO_RATE   6000L           /* samples per second */
+#define UFO_LEN    3000            /* half a second, looped seamlessly: */
+#define UFO_HZ     700L            /* whole cycles of the tone, */
+#define UFO_SWEEP  150L            /* one slow swoop up and down, */
+#define UFO_WOBBLE 12L             /* three theremin wobbles */
+#define UFO_LOOPS  20              /* longer than a whole sighting */
+#define SAMPLE_BYTES (PING_LEN + QUINDAR_LEN + UFO_LEN)
 
 static struct MsgPort *port;
 static struct IOAudio *io;
@@ -31,6 +38,8 @@ static int pending;
 static int enabled = 1;
 static BYTE *ping;
 static BYTE *quindar;
+static BYTE *ufo;
+static BYTE *playing;              /* sample of the last effect started */
 static long clock_hz;
 static UBYTE channels[] = { 1, 2, 4, 8 };
 
@@ -39,10 +48,11 @@ int sound_open(void)
     long i;
 
     clock_hz = (GfxBase->DisplayFlags & PAL) ? 3546895L : 3579545L;
-    ping = AllocMem(PING_LEN + QUINDAR_LEN, MEMF_CHIP | MEMF_CLEAR);
+    ping = AllocMem(SAMPLE_BYTES, MEMF_CHIP | MEMF_CLEAR);
     if (!ping)
         return 0;
     quindar = ping + PING_LEN;
+    ufo = quindar + QUINDAR_LEN;
 
     for (i = 0; i < PING_TONE; i++)
     {
@@ -54,6 +64,21 @@ int sound_open(void)
     }
     for (i = 0; i < QUINDAR_LEN; i++)
         quindar[i] = (BYTE)(100L * geo_sin(i * 36000L / QUINDAR_LEN) / GEO_ONE);
+    {
+        /* Phase in 1/16ths of a hundredth of a degree, so the gliding
+         * frequency adds up to whole cycles over the loop */
+        long phase = 0;
+
+        for (i = 0; i < UFO_LEN; i++)
+        {
+            long hz16 = UFO_HZ * 16 +
+                UFO_SWEEP * 16 * geo_sin(i * 36000L / UFO_LEN) / GEO_ONE +
+                UFO_WOBBLE * 16 * geo_sin(i * 3 * 36000L / UFO_LEN) / GEO_ONE;
+
+            ufo[i] = (BYTE)(90L * geo_sin(phase / 16) / GEO_ONE);
+            phase = (phase + hz16 * 36000L / UFO_RATE) % (36000L * 16);
+        }
+    }
 
     port = CreatePort(0, 0);
     if (!port)
@@ -102,7 +127,7 @@ void sound_close(void)
     }
     if (ping)
     {
-        FreeMem(ping, PING_LEN + QUINDAR_LEN);
+        FreeMem(ping, SAMPLE_BYTES);
         ping = 0;
     }
 }
@@ -128,6 +153,7 @@ static void play(BYTE *data, long len, long rate, int cycles, int volume)
     io->ioa_Cycles = cycles;
     BeginIO((struct IORequest *)io);
     pending = 1;
+    playing = data;
 }
 
 void sound_ping(void)
@@ -146,4 +172,12 @@ void sound_quindar(int start)
 
     play(quindar, QUINDAR_LEN, hz * QUINDAR_LEN,
          (int)(hz * QUINDAR_MS / 1000L), 32);
+}
+
+void sound_ufo(int on)
+{
+    if (on)
+        play(ufo, UFO_LEN, UFO_RATE, UFO_LOOPS, 40);
+    else if (dev_open && playing == ufo)
+        stop();
 }

@@ -41,7 +41,8 @@ CFLAGS  := -mcpu=68000 -msoft-float -mcrt=nix13 -Os -Wall -Wextra -std=gnu99 \
 LDFLAGS := -mcpu=68000 -msoft-float -mcrt=nix13 -s
 
 SRCS := main.c screen.c sprite.c night.c trail.c who.c fetch.c json.c geo.c \
-        map_data.c region.c region_data.c config.c home.c sound.c twinkle.c
+        map_data.c region.c region_data.c config.c home.c sound.c twinkle.c \
+        ufo.c ufo_path.c
 OBJS := $(SRCS:%.c=$(BUILD)/obj/%.o)
 
 ICONS := icons/ISSTracker.info icons/Disk.info icons/ReadMe.info
@@ -90,7 +91,7 @@ test:
 	@mkdir -p $(BUILD)/host
 	$(HOSTCC) -std=c99 -Wall -Wextra -O2 -o $(BUILD)/host/test_logic \
 		tests/test_logic.c src/geo.c src/json.c src/night.c src/region.c \
-		src/region_data.c src/config.c
+		src/region_data.c src/config.c src/ufo_path.c
 	$(BUILD)/host/test_logic
 
 # Regenerate committed assets (outputs are checked in; a normal build does

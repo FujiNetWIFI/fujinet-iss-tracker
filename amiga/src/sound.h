@@ -25,4 +25,8 @@ void sound_alert(void);
  * 2475 Hz to end. */
 void sound_quindar(int start);
 
+/* Spooky theremin warble while a UFO is about: on to start, off to stop
+ * (unless another effect has taken over). */
+void sound_ufo(int on);
+
 #endif /* SOUND_H */
