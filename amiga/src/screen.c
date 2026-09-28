@@ -124,6 +124,26 @@ static void draw_panel_frame(void)
     field_at(1, row_time, STATUS_COLS, PEN_RULE, "----------  --:--:-- UTC");
 }
 
+/* A borderless window's title bar leaves its top and bottom rows
+ * unpainted, so the bar is two rows shorter than its close gadget. Fill
+ * them in the bar colour (Intuition's fill never reaches them, so they
+ * stay), then redraw the title, whose top row the fill covered. */
+static void fill_title_bar(void)
+{
+    struct RastPort *rp = win->RPort;
+    struct Gadget *g;
+    int h = scr->BarHeight;
+
+    for (g = win->FirstGadget; g; g = g->NextGadget)
+        if ((g->GadgetType & GTYP_SYSTYPEMASK) == GTYP_CLOSE)
+            h = g->Height;
+
+    SetAPen(rp, PEN_TEXT);
+    RectFill(rp, 0, 0, win->Width - 1, 0);
+    RectFill(rp, 0, h - 1, win->Width - 1, h - 1);
+    SetWindowTitles(win, win->Title, (UBYTE *)~0);
+}
+
 int screen_open(struct Menu *menu, const char **why)
 {
     struct NewScreen ns;
@@ -172,6 +192,7 @@ int screen_open(struct Menu *menu, const char **why)
     }
     SetMenuStrip(win, menu);
     SetFont(win->RPort, scr->RastPort.Font);
+    fill_title_bar();
 
     map_top = win->BorderTop;
     if (map_top < scr->BarHeight + 1)
