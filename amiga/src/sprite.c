@@ -3,13 +3,9 @@
  * @license gpl v. 3, see LICENSE for details.
  * @verbose ISS hardware sprite with colour cycling, plus a spacewalker
  *
- * Sprite 2 is requested for the ISS because its colour registers (21-23)
- * are reserved for it by the palette (tools/png2planar.py). Sprites 0/1
- * belong to the mouse pointer. The astronaut uses the other sprite of the
- * same pair, so it shares those colours: a white suit, a gold visor that
- * shimmers with the solar arrays and a chest light pulsing with the beacon.
- * The lower numbered sprite has display priority, so the astronaut passes
- * behind the station as it goes in and out of the hatch.
+ * The ISS takes sprite 2, whose colours (21-23) the palette reserves; the
+ * astronaut takes its partner, sharing those colours and passing behind
+ * the ISS (lower sprites have priority). Sprites 0/1 are the pointer.
  */
 
 #include <string.h>
@@ -106,8 +102,6 @@ static unsigned ticks;
 static int reg;                /* first colour register of the sprite pair */
 static int walk = -1;          /* spacewalk step, -1 when inside */
 
-static void sprite_tick_visual(void);
-
 static void set_rgb(int r, UWORD c)
 {
     SetRGB4(&owner->ViewPort, r, (c >> 8) & 15, (c >> 4) & 15, c & 15);
@@ -136,7 +130,7 @@ static void build(UWORD *img, const char *const *art, int width)
     }
 }
 
-/* Show img (or blank it with 0) and move the sprite to x, y. */
+/* Show img (0 blanks the sprite) at x, y */
 static void show(hw_sprite *s, UWORD *img, int x, int y)
 {
     if (s->num < 0)
@@ -176,12 +170,11 @@ int sprite_open(struct Screen *s)
     }
     reg = 16 + (iss.num & 6) * 2;
 
-    /* The partner sprite shares the ISS colours; without it the tracker
-     * simply has no spacewalks. */
+    /* no partner sprite just means no spacewalks */
     astro.ss.height = SPR_H;
     astro.num = GetSprite(&astro.ss, iss.num ^ 1);
 
-    /* Park them off the map until the first fix arrives */
+    /* hidden until the first fix */
     sx = -SPR_W;
     sy = 0;
     show(&iss, 0, sx, sy);
@@ -208,23 +201,7 @@ void sprite_close(void)
     }
 }
 
-void sprite_place(int x, int y, int top)
-{
-    sx = x - SPR_W / 2;
-    sy = top + y - SPR_H / 2;
-    map_y0 = top;
-    sprite_tick_visual();
-}
-
-int sprite_spacewalk(void)
-{
-    if (astro.num < 0 || walk >= 0 || map_y0 < 0)
-        return 0;
-    walk = 0;
-    return 1;
-}
-
-/* Astronaut position for the current walk step, relative to the ISS. */
+/* Astronaut offset from the ISS centre for the current walk step */
 static void walk_offset(int *dx, int *dy)
 {
     long ang = 27000L;         /* straight up out of the hatch */
@@ -241,7 +218,7 @@ static void walk_offset(int *dx, int *dy)
     *dy = (int)(r * WALK_RY * geo_sin(ang) / (WALK_OUT * GEO_ONE));
 }
 
-static void sprite_tick_visual(void)
+static void update_sprites(void)
 {
     int front = IntuitionBase->FirstScreen == owner && sx > -SPR_W &&
                 !suspended;
@@ -253,14 +230,13 @@ static void sprite_tick_visual(void)
         int dx, dy, ax, ay;
 
         walk_offset(&dx, &dy);
-        /* centre the 5x7 figure on the ISS centre plus the offset, kept
-         * on the map when the station is near an edge */
+        /* kept on the map near the edges */
         ax = sx + SPR_W / 2 + dx - ASTRO_W / 2;
         ay = sy + dy;
         if (ax < 0)
             ax = 0;
-        if (ax > 319 - ASTRO_W)
-            ax = 319 - ASTRO_W;
+        if (ax > MAP_W - 1 - ASTRO_W)
+            ax = MAP_W - 1 - ASTRO_W;
         if (ay < map_y0)
             ay = map_y0;
         if (ay > map_y0 + MAP_H - SPR_H)
@@ -269,6 +245,22 @@ static void sprite_tick_visual(void)
     }
     else
         show(&astro, 0, sx, sy);
+}
+
+void sprite_place(int x, int y, int top)
+{
+    sx = x - SPR_W / 2;
+    sy = top + y - SPR_H / 2;
+    map_y0 = top;
+    update_sprites();
+}
+
+int sprite_spacewalk(void)
+{
+    if (astro.num < 0 || walk >= 0 || map_y0 < 0)
+        return 0;
+    walk = 0;
+    return 1;
 }
 
 int sprite_tick(void)
@@ -284,7 +276,6 @@ int sprite_tick(void)
         unsigned phase = ticks / COLOUR_TICKS;
 
         set_rgb(reg + 1, arrays[phase % NARRAYS]);
-        set_rgb(reg + 2, 0xCCD);
         set_rgb(reg + 3, beacon[phase % NBEACON]);
     }
 
@@ -294,7 +285,7 @@ int sprite_tick(void)
         ended = 1;
     }
 
-    sprite_tick_visual();
+    update_sprites();
     return ended;
 }
 
@@ -302,5 +293,5 @@ void sprite_suspend(int on)
 {
     suspended = on;
     if (iss.num >= 0)
-        sprite_tick_visual();
+        update_sprites();
 }

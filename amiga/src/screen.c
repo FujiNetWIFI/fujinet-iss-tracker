@@ -3,9 +3,9 @@
  * @license gpl v. 3, see LICENSE for details.
  * @verbose Custom screen, main window, map compositor and status panel
  *
- * Kickstart 1.3 compatible: NewScreen/NewWindow structures, no tag lists.
- * The map is composed in an off-screen chip RAM bitmap and blitted through
- * the window's layer, so menus and the crew window are never overdrawn.
+ * Kickstart 1.3 structures only (no tag lists). The map is composed off
+ * screen and blitted through the window's layer, so windows and menus on
+ * top are never overdrawn.
  */
 
 #include <string.h>
@@ -24,8 +24,10 @@
 #include "twinkle.h"
 
 #define DEPTH 5
-#define COLS  (320 / 8)          /* characters per panel line */
+#define COLS  (MAP_W / 8)        /* characters per panel line */
 #define LINE_H 9
+#define STATUS_COLS 28           /* status text, left of the countdown */
+#define HOME_COLS 38
 
 extern struct GfxBase *GfxBase;
 
@@ -100,10 +102,10 @@ static void draw_panel_frame(void)
     struct RastPort *rp = win->RPort;
 
     SetAPen(rp, PEN_OCEAN);
-    RectFill(rp, 0, panel_top, 319, win->Height - 1);
+    RectFill(rp, 0, panel_top, MAP_W - 1, win->Height - 1);
     SetAPen(rp, PEN_RULE);
     Move(rp, 0, panel_top);
-    Draw(rp, 319, panel_top);
+    Draw(rp, MAP_W - 1, panel_top);
 
     if (row_title > 0)
         text_at((320 - 27 * 8) / 2, row_title, PEN_LABEL,
@@ -114,12 +116,12 @@ static void draw_panel_frame(void)
         text_at(8, row_help + LINE_H, PEN_RULE, "M:Sound B:Saver Q:Quit");
     }
 
-    /* Placeholders until the first fix arrives */
+    /* labels, and placeholders until the first fix */
     text_at(8, row_pos, PEN_LABEL, "LAT");
     text_at(8 + 4 * 8, row_pos, PEN_RULE, "  --.-- -");
     text_at(8 + 17 * 8, row_pos, PEN_LABEL, "LON");
     text_at(8 + 21 * 8, row_pos, PEN_RULE, "  --.-- -");
-    field_at(1, row_time, 28, PEN_RULE, "----------  --:--:-- UTC");
+    field_at(1, row_time, STATUS_COLS, PEN_RULE, "----------  --:--:-- UTC");
 }
 
 int screen_open(struct Menu *menu, const char **why)
@@ -132,7 +134,7 @@ int screen_open(struct Menu *menu, const char **why)
     height = pal ? 256 : 200;
 
     memset(&ns, 0, sizeof ns);
-    ns.Width = 320;
+    ns.Width = MAP_W;
     ns.Height = height;
     ns.Depth = DEPTH;
     ns.DetailPen = PEN_OCEAN;
@@ -150,7 +152,7 @@ int screen_open(struct Menu *menu, const char **why)
     LoadRGB4(&scr->ViewPort, (UWORD *)map_palette, 32);
 
     memset(&nw, 0, sizeof nw);
-    nw.Width = 320;
+    nw.Width = MAP_W;
     nw.Height = height;
     nw.DetailPen = (UBYTE)-1;
     nw.BlockPen = (UBYTE)-1;
@@ -248,18 +250,15 @@ void screen_draw_map(const iss_pos *pos, int night, int trail)
     else
         memset(off.Planes[4], 0, MAP_PLANE_BYTES);
 
+    /* No layer, so no clipping: trail and marker stay inside the map. The
+     * trail pen clears bitplane 4, keeping it bright at night. */
+    InitRastPort(&rp);
+    rp.BitMap = &off;
     if (trail)
     {
-        /* A plain bitmap RastPort has no clipping; trail points are
-         * clamped to the map by geo_lon_to_x/geo_lat_to_y. The trail pen
-         * clears bitplane 4, so the track stays bright on the night side. */
-        InitRastPort(&rp);
-        rp.BitMap = &off;
         SetAPen(&rp, PEN_TRAIL);
         trail_draw(&rp, 0);
     }
-    InitRastPort(&rp);
-    rp.BitMap = &off;
     home_draw_marker(&rp, 0);
 
     BltBitMapRastPort(&off, 0, 0, screen_map_rp(), 0, screen_map_y(),
@@ -292,9 +291,12 @@ int screen_saver(int on)
 {
     struct NewWindow nw;
 
-    if (on && !saver && scr)
+    if (!on == !saver || !scr)
+        return saver != 0;
+
+    footprint_hide();
+    if (on)
     {
-        footprint_hide();
         memset(&nw, 0, sizeof nw);
         nw.Width = scr->Width;
         nw.Height = scr->Height;
@@ -313,17 +315,13 @@ int screen_saver(int on)
         SetAPen(saver->RPort, PEN_SHADOW);
         RectFill(saver->RPort, 0, 0, saver->Width - 1, saver->Height - 1);
     }
-    else if (!on && saver)
+    else
     {
-        footprint_hide();
         CloseWindow(saver);
         saver = 0;
         ActivateWindow(win);
     }
-    else
-        return saver != 0;
 
-    /* show the composed map on the new surface */
     if (off_ok)
     {
         BltBitMapRastPort(&off, 0, 0, screen_map_rp(), 0, screen_map_y(),
@@ -350,27 +348,24 @@ void screen_draw_position(const iss_pos *pos)
 
     format_coord(lat, pos->lat_h, 'N', 'S');
     format_coord(lon, pos->lon_h, 'E', 'W');
-
-    text_at(8, row_pos, PEN_LABEL, "LAT");
     text_at(8 + 4 * 8, row_pos, PEN_TEXT, lat);
-    text_at(8 + 17 * 8, row_pos, PEN_LABEL, "LON");
     text_at(8 + 21 * 8, row_pos, PEN_TEXT, lon);
 
     geo_utc(pos->ts, &tm);
     sprintf(line, "%04d-%02d-%02d  %02d:%02d:%02d UTC",
             tm.year, tm.month, tm.day, tm.hour, tm.minute, tm.second);
-    field_at(1, row_time, 28, PEN_TEXT, line);
+    field_at(1, row_time, STATUS_COLS, PEN_TEXT, line);
 }
 
 void screen_status(const char *text, int pen)
 {
-    field_at(1, row_status, 28, pen, text);
+    field_at(1, row_status, STATUS_COLS, pen, text);
 }
 
 void screen_home(const char *text, int pen)
 {
     if (row_home > 0)
-        field_at(1, row_home, 38, pen, text);
+        field_at(1, row_home, HOME_COLS, pen, text);
 }
 
 void screen_countdown(int secs)

@@ -9,25 +9,21 @@
 
 #include <graphics/rastport.h>
 
-/* Great-circle radius of the ISS's horizon circle: from ~420 km up it can
- * see (and be seen from) points up to acos(R / (R + h)) = 20.3 deg away. */
+/* ISS horizon radius at ~420 km: acos(R / (R + h)) = 20.3 degrees */
 #define FOOTPRINT_H 2030L
 
 void home_set(long lat_h, long lon_h);
 int home_known(void);
 
-/* Draw the home crosshair into a map bitmap rastport (no layers, map
- * row 0 at y0). */
+/* Draw the home crosshair into a layerless map rastport, map row 0 at y0. */
 void home_draw_marker(struct RastPort *rp, int y0);
 
-/* Distance from home to (lat, lon) in km, and whether that point is within
- * the ISS footprint of home. */
-long home_distance_km(long lat_h, long lon_h);
-int home_in_view(long lat_h, long lon_h);
+/* Distance in km from home to the ISS at (lat, lon); returns 1 if the ISS
+ * is above home's horizon. Needs home_known(). */
+int home_check(long lat_h, long lon_h, long *km);
 
-/* Show the footprint around (lat, lon) on rp, map row 0 at y0, erasing
- * the previous one. The dots are white; the pixels under them are saved
- * and put back when the footprint moves. */
+/* Draw the footprint around (lat, lon) on rp, map row 0 at y0, moving the
+ * previous one. Covered pixels are saved and restored. */
 void footprint_show(struct RastPort *rp, int y0, long lat_h, long lon_h);
 
 /* Remove the footprint (before anything else draws over it). */

@@ -3,9 +3,8 @@
  * @license gpl v. 3, see LICENSE for details.
  * @verbose Twinkling city lights
  *
- * All lights share one colour register, so a twinkle is done per pixel:
- * a light is repainted in the night colour of the terrain under it for a
- * few ticks, then lit again.
+ * All lights share one colour register, so each twinkle repaints a single
+ * light in its terrain's night colour for a few ticks.
  */
 
 #include <exec/memory.h>
@@ -19,7 +18,7 @@
 #define KEEP_DX 64       /* footprint half-width in pixels near 60N/S */
 #define KEEP_DY 26
 
-static unsigned short *lights;   /* y * MAP_W + x of every lit pixel */
+static unsigned short *lights;   /* y * MAP_W + x of each light */
 static long nlights;
 static unsigned long seed = 12345;
 
@@ -96,7 +95,7 @@ void twinkle_tick(struct RastPort *rp, int y0, const struct BitMap *map,
 {
     int i;
 
-    /* light up the ones whose time is over */
+    /* relight expired ones */
     for (i = 0; i < ndim;)
     {
         if (--dim[i].ticks == 0)

@@ -70,15 +70,12 @@ void home_draw_marker(struct RastPort *rp, int y0)
     }
 }
 
-long home_distance_km(long lat_h, long lon_h)
+int home_check(long lat_h, long lon_h, long *km)
 {
-    return geo_angle_to_km(geo_angle_between(home_lat, home_lon, lat_h, lon_h));
-}
+    long ang = geo_angle_between(home_lat, home_lon, lat_h, lon_h);
 
-int home_in_view(long lat_h, long lon_h)
-{
-    return known &&
-           geo_angle_between(home_lat, home_lon, lat_h, lon_h) < FOOTPRINT_H;
+    *km = geo_angle_to_km(ang);
+    return ang < FOOTPRINT_H;
 }
 
 /* Index of (x, y) in the dot list, or -1 */
@@ -124,11 +121,9 @@ void footprint_show(struct RastPort *rp, int y0, long lat_h, long lon_h)
     fp_rp = rp;
     fp_y0 = y0;
 
-    /* at most FP_POINTS dots, one per pixel (keeps the saved pens simple) */
     n = geo_circle_pixels(lat_h, lon_h, FOOTPRINT_H, FP_POINTS, nx, ny);
 
-    /* Move without flicker: put back only the dots that are not part of
-     * the new circle, and paint only the dots that are new. */
+    /* No flicker: restore only dots that moved, paint only new ones */
     for (i = fp_n - 1; i >= 0; i--)
         if (fp_find(nx, ny, n, fp_x[i], fp_y[i]) < 0)
             fp_restore(i);

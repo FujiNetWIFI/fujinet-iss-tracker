@@ -21,8 +21,8 @@ void sound_ping(void);
 /* Three pings: the ISS has come over the home horizon. */
 void sound_alert(void);
 
-/* NASA "Quindar" tone that keyed Apollo-era radio: 2525 Hz to start a
- * transmission (the astronaut goes out), 2475 Hz to end it. */
+/* NASA "Quindar" radio tone: 2525 Hz to start (astronaut goes out),
+ * 2475 Hz to end. */
 void sound_quindar(int start);
 
 #endif /* SOUND_H */

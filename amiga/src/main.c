@@ -11,6 +11,7 @@
 #include <string.h>
 #include <exec/types.h>
 #include <devices/timer.h>
+#include <dos/dosextens.h>
 #include <intuition/intuition.h>
 #include <workbench/startup.h>
 #include <workbench/workbench.h>
@@ -212,11 +213,13 @@ static void show_live(void)
     screen_draw_position(&est);
     footprint_show(screen_map_rp(), screen_map_y(), est.lat_h, est.lon_h);
 
-    now_in = home_in_view(est.lat_h, est.lon_h);
+    now_in = 0;
     if (home_known())
     {
-        sprintf(text, "HOME %5ld km%s", home_distance_km(est.lat_h, est.lon_h),
-                now_in ? "   ISS IN VIEW!" : "");
+        long km;
+
+        now_in = home_check(est.lat_h, est.lon_h, &km);
+        sprintf(text, "HOME %5ld km%s", km, now_in ? "   ISS IN VIEW!" : "");
         screen_home(text, now_in ? PEN_TRAIL : PEN_TEXT);
         if (now_in && !in_view)
             sound_alert();
@@ -532,6 +535,8 @@ static void run(void)
 
 int main(int argc, char **argv)
 {
+    struct Process *me = (struct Process *)FindTask(0);
+    APTR old_window = me->pr_WindowPtr;
     const char *why = 0;
     int rc = 20;
 
@@ -548,6 +553,7 @@ int main(int argc, char **argv)
         goto out;
     if (!screen_open(&menu, &why))
         goto out;
+    me->pr_WindowPtr = win;      /* DOS requesters on our screen, not WB */
     sprite_open(scr);
     twinkle_init();
     sound_open();
@@ -557,6 +563,7 @@ int main(int argc, char **argv)
     rc = 0;
 
 out:
+    me->pr_WindowPtr = old_window;
     fetch_shutdown();
     sound_close();
     twinkle_free();

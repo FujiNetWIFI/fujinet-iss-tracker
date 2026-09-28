@@ -9,7 +9,7 @@
 #   - FUJINET_NIO_LIB pointing at a fujinet-nio-lib checkout, with
 #     fujinet-nio-driver alongside it (or set FUJINET_NIO_DRIVER)
 #   - xdftool (amitools) or uvx, for `make disk`
-#   - python3 + Pillow only for `make regen-map`
+#   - python3 + Pillow only for the regen-* targets
 #
 #   make            # -> build/ISSTracker
 #   make disk       # -> dist/ISSTracker.adf

@@ -18,8 +18,6 @@ const char *region_name(long lat_h, long lon_h)
         row = 0;
     if (row > REGION_H - 1)
         row = REGION_H - 1;
-    if (col > REGION_W - 1)
-        col = REGION_W - 1;
 
     run = region_runs + region_rows[row];
     while (col >= run[0])

@@ -9,8 +9,8 @@
 
 #include <intuition/screens.h>
 
-/* Allocate a hardware sprite for the ISS. Returns 0 if none is free; the
- * tracker still works, just without the marker. */
+/* Allocate the ISS and astronaut sprites. Returns 0 if none is free (the
+ * tracker still works, without them). */
 int sprite_open(struct Screen *s);
 void sprite_close(void);
 
@@ -22,12 +22,11 @@ void sprite_place(int x, int y, int top);
  * already under way or there is no astronaut sprite. */
 int sprite_spacewalk(void);
 
-/* Hide the sprite (it would show through windows) or show it again. */
+/* Hide the sprites while a window covers the map, or show them again. */
 void sprite_suspend(int on);
 
-/* Advance the colour cycle and keep the sprite glued to the screen (it is
- * hidden while another screen is in front). Call ten times a second. */
-/* Returns 1 on the tick a spacewalk ends. */
+/* Call ten times a second: colour cycling, spacewalk animation, hiding
+ * while another screen is in front. Returns 1 when a spacewalk ends. */
 int sprite_tick(void);
 
 #endif /* SPRITE_H */

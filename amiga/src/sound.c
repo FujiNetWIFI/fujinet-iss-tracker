@@ -3,9 +3,8 @@
  * @license gpl v. 3, see LICENSE for details.
  * @verbose Paula sound effects through audio.device
  *
- * Kickstart 1.3 compatible: one channel is allocated when the device is
- * opened and kept until exit; each effect is a single CMD_WRITE of a
- * sample generated into chip RAM at start-up.
+ * One channel is held from start to exit; each effect is one CMD_WRITE of
+ * a sample generated into chip RAM at start-up (Kickstart 1.3 safe).
  */
 
 #include <exec/memory.h>
@@ -62,7 +61,7 @@ int sound_open(void)
     io = (struct IOAudio *)CreateExtIO(port, sizeof *io);
     if (!io)
         return 0;
-    /* Allocating a channel as part of OpenDevice: any one will do */
+    /* allocate any one channel while opening */
     io->ioa_Request.io_Message.mn_Node.ln_Pri = 0;
     io->ioa_Data = channels;
     io->ioa_Length = sizeof channels;
