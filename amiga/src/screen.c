@@ -124,23 +124,38 @@ static void draw_panel_frame(void)
     field_at(1, row_time, STATUS_COLS, PEN_RULE, "----------  --:--:-- UTC");
 }
 
-/* A borderless window's title bar leaves its top and bottom rows
- * unpainted, so the bar is two rows shorter than its close gadget. Fill
- * them in the bar colour (Intuition's fill never reaches them, so they
- * stay), then redraw the title, whose top row the fill covered. */
+/* A borderless window's title bar is shorter than its close gadget, by
+ * different rows on different Kickstarts (3.x leaves the top and bottom
+ * row unpainted, 2.04 the second-last). So look at what Intuition drew:
+ * fill each row where the gadget is painted but the bar is not, from the
+ * gadget to the bar's right end. Intuition's own redraws never reach
+ * those rows, so they stay. Then redraw the title, which a fill may
+ * have clipped. */
 static void fill_title_bar(void)
 {
     struct RastPort *rp = win->RPort;
-    struct Gadget *g;
-    int h = scr->BarHeight;
+    struct Gadget *g, *close = 0;
+    int x0, right, y;
 
     for (g = win->FirstGadget; g; g = g->NextGadget)
         if ((g->GadgetType & GTYP_SYSTYPEMASK) == GTYP_CLOSE)
-            h = g->Height;
+            close = g;
+    if (!close || close->LeftEdge < 0 || close->Height < 2)
+        return;
+    x0 = close->LeftEdge + close->Width;
+
+    /* the bar's right end, on a row every Kickstart paints */
+    right = win->Width - 1;
+    while (right > x0 && ReadPixel(rp, right, close->Height / 2) != PEN_TEXT)
+        right--;
+    if (right <= x0)
+        return;
 
     SetAPen(rp, PEN_TEXT);
-    RectFill(rp, 0, 0, win->Width - 1, 0);
-    RectFill(rp, 0, h - 1, win->Width - 1, h - 1);
+    for (y = 0; y < close->Height; y++)
+        if (ReadPixel(rp, close->LeftEdge, y) == PEN_TEXT &&
+            ReadPixel(rp, right, y) != PEN_TEXT)
+            RectFill(rp, x0, y, right, y);
     SetWindowTitles(win, win->Title, (UBYTE *)~0);
 }
 
