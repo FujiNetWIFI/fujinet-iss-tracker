@@ -63,3 +63,23 @@ void night_fill(unsigned char *plane, int bytes_per_row, unsigned long ts)
         }
     }
 }
+
+void night_lights(unsigned char *const planes[5], const unsigned char *lights,
+                  long bytes)
+{
+    long i;
+
+    for (i = 0; i < bytes; i++)
+    {
+        unsigned char m = lights[i] & planes[4][i];
+
+        if (m)
+        {
+            /* pen 4: plane 2 only, plus the night bit already set */
+            planes[0][i] &= (unsigned char)~m;
+            planes[1][i] &= (unsigned char)~m;
+            planes[2][i] |= m;
+            planes[3][i] &= (unsigned char)~m;
+        }
+    }
+}

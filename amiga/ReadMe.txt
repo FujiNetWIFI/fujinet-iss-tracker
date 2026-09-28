@@ -2,8 +2,8 @@ ISS Tracker for the Amiga
 =========================
 
 Shows where the International Space Station is right now, on a
-32 colour world map with day/night shading and the ground track of
-its last few orbits. Uses a FujiNet running fujinet-nio firmware.
+32 colour world map with day/night shading, city lights on the
+night side and the ground track of its last few orbits. Uses a FujiNet running fujinet-nio firmware.
 
 Requirements
 ------------
@@ -34,4 +34,5 @@ Credits
 -------
  Position and crew data: Open Notify, http://open-notify.org
  World map: NASA Blue Marble (public domain)
+ City lights: NASA Black Marble 2016 (public domain)
  Part of the FujiNet ISS Tracker project, licensed under GPL v3.

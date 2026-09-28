@@ -11,6 +11,7 @@
 
 /* Pens reserved by the palette layout in tools/png2planar.py */
 #define PEN_OCEAN   0
+#define PEN_LIGHT   4   /* night only: 4 + 16 is the city light colour */
 #define PEN_TEXT    1
 #define PEN_SHADOW  2
 #define PEN_TRAIL   3
@@ -23,5 +24,8 @@ extern const unsigned short map_palette[32];
 
 /* Bitplanes 0-3 of the map, 40 bytes per row */
 extern const unsigned char map_planes[4][MAP_PLANE_BYTES];
+
+/* City lights (NASA Black Marble): set bits glow on the night side */
+extern const unsigned char map_lights[MAP_PLANE_BYTES];
 
 #endif /* MAP_DATA_H */

@@ -222,7 +222,11 @@ void screen_draw_map(const iss_pos *pos, int night, int trail)
         CopyMem((APTR)map_planes[p], off.Planes[p], MAP_PLANE_BYTES);
 
     if (night && pos)
+    {
         night_fill(off.Planes[4], off.BytesPerRow, pos->ts);
+        night_lights((unsigned char *const *)off.Planes, map_lights,
+                     MAP_PLANE_BYTES);
+    }
     else
         memset(off.Planes[4], 0, MAP_PLANE_BYTES);
 

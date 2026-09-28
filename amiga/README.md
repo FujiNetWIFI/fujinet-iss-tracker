@@ -8,6 +8,8 @@ shows:
 - an astronaut who goes on a spacewalk around the station every two
   minutes (a second hardware sprite);
 - day/night shading for the current time, with a soft terminator;
+- city lights on the night side, placed from NASA's Black Marble satellite
+  imagery of the Earth at night;
 - the ISS ground track from roughly the last four hours (two to three orbits);
 - latitude, longitude and UTC time in a panel below.
 
@@ -53,16 +55,20 @@ cc65-family toolchains and doesn't apply to amiga-gcc.
 `src/map_data.c` and `icons/*.info` are generated and committed, so a normal
 build doesn't need Python:
 
-- `make regen-map` rebuilds the map data from `gfx/map.png`. It needs
-  Python 3 and Pillow, and writes `build/map-preview.png`.
+- `make regen-map` rebuilds the map data from `gfx/map.png` and the
+  city light intensities in `gfx/lights.png`. It needs Python 3 and Pillow,
+  and writes `build/map-preview.png`.
 - `make regen-icons` rebuilds the icons from the `gfx/*.icon.txt` pixel art
   and writes `build/icon-preview.png`.
 
-To rebuild `gfx/map.png` from the full-size NASA image
-(`land_shallow_topo_2048.jpg` from NASA Visible Earth):
+To rebuild the two PNGs from the full-size NASA images
+(`land_shallow_topo_2048.jpg` and `BlackMarble_2016_01deg.jpg` from NASA
+Visible Earth / Earth Observatory):
 
 ```sh
-python3 tools/png2planar.py --source land_shallow_topo_2048.jpg gfx/map.png src/map_data.c
+python3 tools/png2planar.py --source land_shallow_topo_2048.jpg \
+    --lights-source BlackMarble_2016_01deg.jpg \
+    gfx/map.png gfx/lights.png src/map_data.c
 ```
 
 ## Running
@@ -100,8 +106,9 @@ The display uses these colour registers:
 |---|---|
 | Bitplanes 0–3 | The map. |
 | Bitplane 4 | The night mask. Colour *n* + 16 is the dark twin of map colour *n*. |
+| 4 | Never drawn by day. Its twin, 20, is the city light colour, so a light is pen 4 on the night side. |
 | 1–3, 5–7 | Reserved for UI pens. Their twins are the mouse pointer (17–19) and the ISS sprite pair (21–23), which the astronaut shares. |
-| 0, 4, 8–15 | The ten map colours that remain. |
+| 0, 8–15 | The nine map colours that remain. |
 
 The map is composed in an off-screen chip RAM bitmap: terrain, then the
 night mask, then the trail. It is then blitted into the window, so menus and
@@ -125,7 +132,7 @@ where the sun sets.
 | `src/json.c` | Minimal JSON value and array extraction |
 | `src/geo.c` | Coordinates, UTC, fixed-point trig, terminator |
 | `src/map_data.c` | Generated planar map and 32-colour palette |
-| `tools/png2planar.py` | Map image to palette and planar data |
+| `tools/png2planar.py` | Map and night-light images to palette and planar data |
 | `tools/mkinfo.py` | Pixel art to Workbench 1.3 `.info` icons |
 | `tests/test_logic.c` | Host tests for the portable logic |
 
@@ -133,6 +140,9 @@ where the sun sets.
 
 - The world map is derived from NASA Visible Earth's
   [Blue Marble](https://visibleearth.nasa.gov/images/57752/blue-marble-land-surface-shallow-water-and-shaded-topography),
+  which is public domain.
+- City lights come from NASA Earth Observatory's
+  [Black Marble 2016](https://earthobservatory.nasa.gov/features/NightLights),
   which is public domain.
 - ISS position and crew data come from [Open Notify](http://open-notify.org/)
   by Nathan Bergey.

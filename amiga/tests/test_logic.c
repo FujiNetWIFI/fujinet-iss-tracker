@@ -180,6 +180,47 @@ static void test_night_plane(void)
     CHECK((plane[y * (MAP_W / 8) + x / 8] >> (7 - (x & 7))) & 1);
 }
 
+/* Lights only replace pixels on the night side, with pen 4 + 16. */
+static void test_night_lights(void)
+{
+    enum { BYTES = MAP_W / 8 * MAP_H };
+    static unsigned char pl[5][BYTES];
+    static unsigned char lights[BYTES];
+    unsigned char *planes[5];
+    int i, bad = 0, lit = 0, day = 0;
+
+    for (i = 0; i < 5; i++)
+        planes[i] = pl[i];
+    memset(pl, 0, sizeof pl);
+    memset(pl[0], 0xFF, BYTES);          /* terrain pen 9 = planes 0 and 3 */
+    memset(pl[3], 0xFF, BYTES);
+    for (i = 0; i < BYTES; i++)
+        lights[i] = (i & 1) ? 0x0F : 0xF0;
+    night_fill(pl[4], MAP_W / 8, 1782043200UL);
+    night_lights(planes, lights, BYTES);
+
+    for (i = 0; i < MAP_W * MAP_H; i++)
+    {
+        int byte = i / 8, bit = 0x80 >> (i % 8), v = 0, p;
+        int night = (pl[4][byte] & bit) != 0;
+        int want;
+
+        for (p = 0; p < 5; p++)
+            if (pl[p][byte] & bit)
+                v |= 1 << p;
+        want = night && (lights[byte] & bit) ? 20 : night ? 25 : 9;
+        if (v != want)
+            bad++;
+        if (v == 20)
+            lit++;
+        if (v == 9)
+            day++;
+    }
+    CHECK(bad == 0);
+    CHECK(lit > 0);
+    CHECK(day > 0);
+}
+
 int main(void)
 {
     test_json();
@@ -189,6 +230,7 @@ int main(void)
     test_trig();
     test_terminator();
     test_night_plane();
+    test_night_lights();
 
     if (failures)
     {

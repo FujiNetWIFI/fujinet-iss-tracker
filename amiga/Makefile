@@ -94,7 +94,7 @@ test:
 # Regenerate committed assets (outputs are checked in; a normal build does
 # not need Python or Pillow).
 regen-map:
-	$(PYTHON) tools/png2planar.py --preview $(BUILD)/map-preview.png gfx/map.png src/map_data.c
+	$(PYTHON) tools/png2planar.py --preview $(BUILD)/map-preview.png gfx/map.png gfx/lights.png src/map_data.c
 
 regen-icons:
 	$(PYTHON) tools/mkinfo.py --preview $(BUILD)/icon-preview.png

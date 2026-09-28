@@ -12,4 +12,10 @@
  * pixel checkerboard softens the terminator. */
 void night_fill(unsigned char *plane, int bytes_per_row, unsigned long ts);
 
+/* Switch lit pixels that are on the night side (bitplane 4 set) to the
+ * city light colour, pen 4 + 16. planes are the five map bitplanes, all
+ * MAP_W x MAP_H with the same row length as lights. */
+void night_lights(unsigned char *const planes[5], const unsigned char *lights,
+                  long bytes);
+
 #endif /* NIGHT_H */
