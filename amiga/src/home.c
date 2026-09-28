@@ -117,29 +117,15 @@ void footprint_show(struct RastPort *rp, int y0, long lat_h, long lon_h)
 {
     short nx[FP_POINTS], ny[FP_POINTS];
     unsigned char nu[FP_POINTS];
-    long brg, lat, lon;
-    int n = 0, i, j;
+    int n, i, j;
 
     if (rp != fp_rp || y0 != fp_y0)
         footprint_hide();
     fp_rp = rp;
     fp_y0 = y0;
 
-    for (brg = 0; brg < 36000L; brg += 36000L / FP_POINTS)
-    {
-        int x, y;
-
-        geo_destination(lat_h, lon_h, brg, FOOTPRINT_H, &lat, &lon);
-        x = geo_lon_to_x(lon);
-        y = geo_lat_to_y(lat);
-        /* one dot per pixel keeps the saved pens simple */
-        if (fp_find(nx, ny, n, x, y) < 0)
-        {
-            nx[n] = (short)x;
-            ny[n] = (short)y;
-            n++;
-        }
-    }
+    /* at most FP_POINTS dots, one per pixel (keeps the saved pens simple) */
+    n = geo_circle_pixels(lat_h, lon_h, FOOTPRINT_H, FP_POINTS, nx, ny);
 
     /* Move without flicker: put back only the dots that are not part of
      * the new circle, and paint only the dots that are new. */

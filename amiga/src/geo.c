@@ -328,3 +328,31 @@ int geo_extrapolate(long lat0, long lon0, unsigned long t0,
     *lon = geo_wrap_lon(lon1 + dlon * elapsed / dt);
     return 1;
 }
+
+int geo_circle_pixels(long lat, long lon, long ang_h, int points,
+                      short *xs, short *ys)
+{
+    int i, j, n = 0;
+
+    /* Step by index, not by bearing: 36000 / points need not be exact,
+     * and a bearing loop would then produce one point too many. */
+    for (i = 0; i < points; i++)
+    {
+        long lat2, lon2;
+        int x, y, dup = 0;
+
+        geo_destination(lat, lon, (long)i * 36000L / points, ang_h,
+                        &lat2, &lon2);
+        x = geo_lon_to_x(lon2);
+        y = geo_lat_to_y(lat2);
+        for (j = 0; j < n && !dup; j++)
+            dup = xs[j] == x && ys[j] == y;
+        if (!dup)
+        {
+            xs[n] = (short)x;
+            ys[n] = (short)y;
+            n++;
+        }
+    }
+    return n;
+}

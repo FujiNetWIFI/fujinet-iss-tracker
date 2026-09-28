@@ -62,6 +62,12 @@ long geo_angle_to_km(long ang_h);
 void geo_destination(long lat, long lon, long brg_h, long ang_h,
                      long *lat2, long *lon2);
 
+/* Map pixels of the circle ang_h around (lat, lon), as seen on the map:
+ * points at `points` evenly spaced bearings, with repeats dropped. Writes
+ * at most `points` entries to xs/ys and returns how many. */
+int geo_circle_pixels(long lat, long lon, long ang_h, int points,
+                      short *xs, short *ys);
+
 /* Dead-reckon a position elapsed seconds after the fix at (lat1, lon1, t1),
  * from the motion since an earlier fix at (lat0, lon0, t0). Returns 0 (and
  * copies the later fix) when the two fixes are unusable. */

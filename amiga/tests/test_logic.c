@@ -264,6 +264,37 @@ static void test_great_circle(void)
     }
 }
 
+/* Regression: a bearing loop stepping 36000/64 = 562 produced 65 points
+ * and overran 64-entry arrays on the stack (Line-F crash on real
+ * hardware). Guard words either side catch any overrun. */
+static void test_circle_bounds(void)
+{
+    struct { short guard0[4]; short xs[64]; short guard1[4]; } a;
+    struct { short guard0[4]; short ys[64]; short guard1[4]; } b;
+    long lat, lon;
+    int n, i, most = 0, bad = 0;
+
+    for (lat = -5200; lat <= 5200; lat += 400)
+        for (lon = -18000; lon < 18000; lon += 1300)
+        {
+            for (i = 0; i < 4; i++)
+                a.guard0[i] = a.guard1[i] = b.guard0[i] = b.guard1[i] = 0x5A5A;
+            n = geo_circle_pixels(lat, lon, 2030, 64, a.xs, b.ys);
+            if (n > most)
+                most = n;
+            for (i = 0; i < 4; i++)
+                if (a.guard0[i] != 0x5A5A || a.guard1[i] != 0x5A5A ||
+                    b.guard0[i] != 0x5A5A || b.guard1[i] != 0x5A5A)
+                    bad++;
+            for (i = 0; i < n; i++)
+                if (a.xs[i] < 0 || a.xs[i] >= MAP_W ||
+                    b.ys[i] < 0 || b.ys[i] >= MAP_H)
+                    bad++;
+        }
+    CHECK(bad == 0);
+    CHECK(most == 64);      /* the full circle is used, and never more */
+}
+
 static void test_extrapolate(void)
 {
     long lat, lon;
@@ -320,6 +351,7 @@ int main(void)
     test_night_lights();
     test_inverse_trig();
     test_great_circle();
+    test_circle_bounds();
     test_extrapolate();
     test_regions();
     test_config();
