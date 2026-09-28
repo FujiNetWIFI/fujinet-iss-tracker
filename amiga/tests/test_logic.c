@@ -369,12 +369,13 @@ static void test_ufo_art(void)
     CHECK(UFO_HEAD_W < ufo_body[UFO_SIZES - 1].w);
 }
 
-static int edge_side(int x, int y)
+/* Which side of the map a point is off, or -1 if it is on the map */
+static int off_side(int x, int y)
 {
-    if (x < 8) return 0;
-    if (x >= MAP_W - 8) return 1;
-    if (y < 8) return 2;
-    if (y >= MAP_H - 8) return 3;
+    if (x < 0) return 0;
+    if (x >= MAP_W) return 1;
+    if (y < 0) return 2;
+    if (y >= MAP_H) return 3;
     return -1;
 }
 
@@ -399,8 +400,19 @@ static void test_ufo_path(void)
                 bad++;
                 continue;
             }
-            if (o.x < 0 || o.x >= MAP_W || o.y < 0 || o.y >= MAP_H)
+            /* off the map only near either end */
+            if (o.x < -40 || o.x >= MAP_W + 40 || o.y < -40 || o.y >= MAP_H + 40)
                 bad++;
+            /* hovering: the whole saucer and its pilot are on the map */
+            if (step >= UFO_IN && step < UFO_IN + UFO_HOVER)
+            {
+                const ufo_art *b = &ufo_body[o.size];
+
+                if (o.x - b->w / 2 < 0 || o.x - b->w / 2 + b->w > MAP_W ||
+                    o.y - b->h / 2 - UFO_HEAD_H < 0 ||
+                    o.y - b->h / 2 + b->h > MAP_H)
+                    bad++;
+            }
             if (o.size < 0 || o.size >= UFO_SIZES || o.rise < 0 ||
                 o.rise > UFO_HEAD_H || o.look < 0 || o.look >= UFO_LOOKS)
                 bad++;
@@ -419,11 +431,14 @@ static void test_ufo_path(void)
         CHECK(!ufo_path_step(&p, UFO_STEPS, &o));
         ufo_path_step(&p, 0, &first);
         ufo_path_step(&p, UFO_STEPS - 1, &last);
-        /* a speck at one edge, a speck at a different edge */
+        /* a speck off one edge, a speck off a different edge, both far
+         * enough out not to show */
         CHECK(first.size == 0 && last.size == 0);
-        CHECK(edge_side(first.x, first.y) >= 0);
-        CHECK(edge_side(last.x, last.y) >= 0);
-        CHECK(edge_side(first.x, first.y) != edge_side(last.x, last.y));
+        CHECK(off_side(first.x, first.y) >= 0);
+        CHECK(off_side(last.x, last.y) >= 0);
+        CHECK(off_side(first.x, first.y) != off_side(last.x, last.y));
+        CHECK(first.x + ufo_body[0].w < 0 || first.x - ufo_body[0].w >= MAP_W ||
+              first.y + ufo_body[0].h < 0 || first.y - ufo_body[0].h >= MAP_H);
         CHECK(looks == 7 && max_rise == UFO_HEAD_H);
     }
     CHECK(bad == 0);

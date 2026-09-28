@@ -12,6 +12,7 @@
 /* Pens reserved by the palette layout in tools/png2planar.py */
 #define PEN_OCEAN   0
 #define PEN_LIGHT   4   /* night only: 4 + 16 is the city light colour */
+#define PEN_ALIEN   4   /* ... and 4 itself, never on the map, the UFO pilot */
 #define PEN_TEXT    1
 #define PEN_SHADOW  2
 #define PEN_TRAIL   3

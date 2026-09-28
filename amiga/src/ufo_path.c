@@ -8,8 +8,9 @@
 #include "ufo_path.h"
 
 #define U 1024L                  /* curve parameter: 0 .. U */
-#define EDGE 4                   /* flights start and end this far in */
-#define CORNER 20                /* ... and at least this far from a corner */
+#define EDGE 4                   /* curves stay this far inside the map ... */
+#define OFF 24                   /* ... but flights start and end this far off it */
+#define CORNER 20                /* and at least this far from a corner */
 #define SWOOP 60                 /* sideways throw of the curves, pixels */
 
 /* Hover timeline, in hover frames */
@@ -55,34 +56,72 @@ static const char *const body3[] =
     "......kkkkkkkkkkk......",
 };
 
+static const char *const body4[] =
+{
+    "............kkkkkkkkk............",
+    "...........kcwwcccccck...........",
+    "..........kccccccccccck..........",
+    ".........kccccccccccccck.........",
+    "....kkkgggggggggggggggggggkkk....",
+    "kgwwggggggggggggggggggggggggggggk",
+    "kgggLgggggLgggggLgggggLgggggLgggk",
+    "..kkgggggggggggggggggggggggggkk..",
+    ".......kkkkkkkkkkkkkkkkkkk.......",
+};
+
+static const char *const body5[] =
+{
+    ".................kkkkkkkkkkkkk.................",
+    "................kccwwccccccccck................",
+    "..............kcwwcccccccccccccck..............",
+    ".............kccccccccccccccccccck.............",
+    "............kccccccccccccccccccccck............",
+    ".......kkkkgggggggggggggggggggggggggkkkk.......",
+    "...kkgwwwgggggggggggggggggggggggggggggggggkk...",
+    "kgwwggggggggggggggggggggggggggggggggggggggggggk",
+    "kggggLgggggLgggggLgggggLgggggLgggggLgggggLggggk",
+    "kgggggggggggggggggggggggggggggggggggggggggggggk",
+    "...kkgggggggggggggggggggggggggggggggggggggkk...",
+    ".......kkkkgggggggggggggggggggggggggkkkk.......",
+    "............kkkkkkkkkkkkkkkkkkkkkkk............",
+};
+
+/* The pilot: white eyes, pupils showing where it looks */
+#define HEAD_TOP \
+    ".aa.......aa.", \
+    "..a.......a..", \
+    "...a.....a...", \
+    "....aaaaa....", \
+    "..aaaaaaaaa..", \
+    ".awwwaaawwwa."
+#define HEAD_BOTTOM \
+    ".aaaaaaaaaaa.", \
+    "..aaaaaaaaa..", \
+    "...aaakaaa...", \
+    "....aaaaa...."
+
 static const char *const head_ahead[] =
 {
-    ".a...a.",
-    "..a.a..",
-    ".aaaaa.",
-    "akkakka",
-    "aaaaaaa",
-    ".aaaaa.",
+    HEAD_TOP,
+    ".awkwaaawkwa.",
+    ".awwwaaawwwa.",
+    HEAD_BOTTOM,
 };
 
 static const char *const head_left[] =
 {
-    ".a...a.",
-    "..a.a..",
-    ".aaaaa.",
-    "kkakkaa",
-    "aaaaaaa",
-    ".aaaaa.",
+    HEAD_TOP,
+    ".akwwaaakwwa.",
+    ".awwwaaawwwa.",
+    HEAD_BOTTOM,
 };
 
 static const char *const head_right[] =
 {
-    ".a...a.",
-    "..a.a..",
-    ".aaaaa.",
-    "aakkakk",
-    "aaaaaaa",
-    ".aaaaa.",
+    HEAD_TOP,
+    ".awwkaaawwka.",
+    ".awwwaaawwwa.",
+    HEAD_BOTTOM,
 };
 
 const ufo_art ufo_body[UFO_SIZES] =
@@ -91,6 +130,8 @@ const ufo_art ufo_body[UFO_SIZES] =
     { 9, 3, body1 },
     { 15, 5, body2 },
     { 23, 8, body3 },
+    { 33, 9, body4 },
+    { 47, 13, body5 },
 };
 
 const ufo_art ufo_head[UFO_LOOKS] =
@@ -111,21 +152,21 @@ static int clampi(int v, int lo, int hi)
     return v < lo ? lo : v > hi ? hi : v;
 }
 
-/* A point on a map edge, clear of the corners: side 0 left, 1 right,
- * 2 top, 3 bottom */
+/* A point just off a map edge, clear of the corners: side 0 left,
+ * 1 right, 2 top, 3 bottom */
 static ufo_pt edge_point(int side, unsigned long *seed)
 {
     ufo_pt p;
 
     if (side < 2)
     {
-        p.x = side ? MAP_W - 1 - EDGE : EDGE;
+        p.x = side ? MAP_W - 1 + OFF : -OFF;
         p.y = CORNER + ufo_rand(seed) % (MAP_H - 2 * CORNER);
     }
     else
     {
         p.x = CORNER + ufo_rand(seed) % (MAP_W - 2 * CORNER);
-        p.y = side == 2 ? EDGE : MAP_H - 1 - EDGE;
+        p.y = side == 2 ? -OFF : MAP_H - 1 + OFF;
     }
     return p;
 }
@@ -155,12 +196,14 @@ void ufo_path_init(ufo_path *p, unsigned long *seed)
     p->out = swoop(p->hover, p->end, seed);
 }
 
-/* Quadratic Bezier; stays inside the map because its points do */
+/* Quadratic Bezier */
 static int bez(int a, int c, int b, long u)
 {
     long v = U - u;
+    long sum = v * v * a + 2 * v * u * c + u * u * b;
 
-    return (int)((v * v * a + 2 * v * u * c + u * u * b) / (U * U));
+    /* round towards minus infinity, so off-map points stay off it */
+    return (int)(sum >= 0 ? sum / (U * U) : -((-sum + U * U - 1) / (U * U)));
 }
 
 /* Perspective: the saucer only looms large at the end of its approach */
@@ -175,10 +218,10 @@ static void alien(int k, ufo_pose *o)
 {
     if (k < PEEK_AT || k >= GONE_AT)
         return;
-    if (k < PEEK_AT + 2 * UFO_HEAD_H)
-        o->rise = (k - PEEK_AT) / 2 + 1;
+    if (k < PEEK_AT + UFO_HEAD_H)
+        o->rise = k - PEEK_AT + 1;
     else if (k >= SINK_AT)
-        o->rise = UFO_HEAD_H - (k - SINK_AT) / 2;
+        o->rise = UFO_HEAD_H - (k - SINK_AT);
     else
     {
         o->rise = UFO_HEAD_H;

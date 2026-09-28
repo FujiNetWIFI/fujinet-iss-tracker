@@ -8,6 +8,10 @@
  * positions is copied from the composed map into a scratch bitmap, the
  * saucer is cut in there, and the result goes to the screen in one blit:
  * nothing is erased first, so nothing flickers.
+ *
+ * The saucer flies in from off the map. Scratch covers its whole
+ * rectangle, so the image blits need no clipping; only the part over the
+ * map is filled from the map and copied to the screen.
  */
 
 #include <exec/memory.h>
@@ -19,8 +23,8 @@
 #include "ufo_path.h"
 
 #define DEPTH 5
-#define SCR_W 64                 /* scratch: old and new saucer together */
-#define SCR_H 32
+#define SCR_W 96                 /* scratch: old and new saucer together */
+#define SCR_H 48
 #define MAX_LIGHTS 8
 #define LIGHT_FRAMES 2           /* frames per rim light chase step */
 #define MINTERM_COPY 0xC0
@@ -45,40 +49,15 @@ static long chip_size;
 static image body[UFO_SIZES], head[UFO_LOOKS];
 static struct BitMap scratch;
 static struct RastPort srp;
-static int alien_pen;
 
 static const UBYTE light_pens[] = { PEN_ERROR, PEN_TRAIL, PEN_TEXT };
 
 static ufo_path path;
 static int step = -1;            /* frame of the flight, -1 when none */
-static rect shown;               /* where the saucer is on screen */
+static rect shown;               /* where the saucer is drawn (unclipped) */
 static struct RastPort *shown_rp;
 static int shown_y0;
 static int have_shown;
-
-static int clampi(int v, int lo, int hi)
-{
-    return v < lo ? lo : v > hi ? hi : v;
-}
-
-/* The map palette is generated, so borrow its greenest terrain colour */
-static int greenest(void)
-{
-    int pen, best = PEN_LABEL, best_score = 2;
-
-    for (pen = 8; pen < 16; pen++)
-    {
-        UWORD c = map_palette[pen];
-        int score = 2 * ((c >> 4) & 15) - ((c >> 8) & 15) - (c & 15);
-
-        if (score > best_score)
-        {
-            best_score = score;
-            best = pen;
-        }
-    }
-    return best;
-}
 
 static int pen_of(char c)
 {
@@ -89,7 +68,7 @@ static int pen_of(char c)
     case 'w': return PEN_TEXT;
     case 'c': return PEN_LABEL;
     case 'L': return PEN_ERROR;
-    case 'a': return alien_pen;
+    case 'a': return PEN_ALIEN;
     }
     return -1;
 }
@@ -148,7 +127,6 @@ int ufo_open(void)
     UBYTE *mem;
     int i;
 
-    alien_pen = greenest();
     for (i = 0; i < UFO_SIZES; i++)
         size += image_bytes(&ufo_body[i]);
     for (i = 0; i < UFO_LOOKS; i++)
@@ -199,17 +177,32 @@ int ufo_active(void)
     return step >= 0;
 }
 
+/* The part of r over the map; returns 0 if none is */
+static int clip(const rect *r, rect *v)
+{
+    int x1 = r->x + r->w, y1 = r->y + r->h;
+
+    v->x = r->x < 0 ? 0 : r->x;
+    v->y = r->y < 0 ? 0 : r->y;
+    v->w = (x1 > MAP_W ? MAP_W : x1) - v->x;
+    v->h = (y1 > MAP_H ? MAP_H : y1) - v->y;
+    return v->w > 0 && v->h > 0;
+}
+
 static void restore(const struct BitMap *map, const rect *r)
 {
-    BltBitMapRastPort((struct BitMap *)map, r->x, r->y, shown_rp,
-                      r->x, shown_y0 + r->y, r->w, r->h, MINTERM_COPY);
+    rect v;
+
+    if (clip(r, &v))
+        BltBitMapRastPort((struct BitMap *)map, v.x, v.y, shown_rp,
+                          v.x, shown_y0 + v.y, v.w, v.h, MINTERM_COPY);
 }
 
 int ufo_frame(struct RastPort *rp, int y0, const struct BitMap *map)
 {
     ufo_pose pose;
     image *im;
-    rect r, u;
+    rect r, u, v;
     int bx, by, i;
 
     if (step < 0)
@@ -231,8 +224,8 @@ int ufo_frame(struct RastPort *rp, int y0, const struct BitMap *map)
     im = &body[pose.size];
     r.w = im->w;
     r.h = im->h + (pose.size == UFO_SIZES - 1 ? UFO_HEAD_H : 0);
-    r.x = clampi(pose.x - im->w / 2, 0, MAP_W - r.w);
-    r.y = clampi(pose.y - im->h / 2 - (r.h - im->h), 0, MAP_H - r.h);
+    r.x = pose.x - im->w / 2;
+    r.y = pose.y - im->h / 2 - (r.h - im->h);
 
     u = r;
     if (have_shown)
@@ -248,8 +241,16 @@ int ufo_frame(struct RastPort *rp, int y0, const struct BitMap *map)
         }
     }
 
-    BltBitMap((struct BitMap *)map, u.x, u.y, &scratch, 0, 0, u.w, u.h,
-              MINTERM_COPY, 0xFF, 0);
+    shown = r;
+    shown_rp = rp;
+    shown_y0 = y0;
+    have_shown = 1;
+    step++;
+    if (!clip(&u, &v))
+        return 1;                        /* still off the map */
+
+    BltBitMap((struct BitMap *)map, v.x, v.y, &scratch, v.x - u.x, v.y - u.y,
+              v.w, v.h, MINTERM_COPY, 0xFF, 0);
     bx = r.x - u.x;
     by = r.y - u.y + (r.h - im->h);
     BltMaskBitMapRastPort(&im->bm, 0, 0, &srp, bx, by, im->w, im->h,
@@ -268,13 +269,7 @@ int ufo_frame(struct RastPort *rp, int y0, const struct BitMap *map)
                               by - pose.rise, hd->w, pose.rise,
                               MINTERM_COOKIE, hd->mask);
     }
-    BltBitMapRastPort(&scratch, 0, 0, rp, u.x, y0 + u.y, u.w, u.h,
-                      MINTERM_COPY);
-
-    shown = r;
-    shown_rp = rp;
-    shown_y0 = y0;
-    have_shown = 1;
-    step++;
+    BltBitMapRastPort(&scratch, v.x - u.x, v.y - u.y, rp, v.x, y0 + v.y,
+                      v.w, v.h, MINTERM_COPY);
     return 1;
 }

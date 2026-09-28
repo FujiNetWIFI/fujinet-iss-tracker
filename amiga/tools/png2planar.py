@@ -7,7 +7,8 @@ Some colour registers are claimed by other things and cannot be map colours:
 
   1-3, 5-7   UI pens (text, trail, panel). Their night twins 17-19 are
              the mouse pointer and 21-23 are the ISS hardware sprite.
-  4          never drawn by day; its night twin 20 is the city light colour.
+  4          never part of the map: its night twin 20 is the city light
+             colour, and 4 itself is the UFO pilot's green.
 
 That leaves nine indices for terrain: 0 and 8-15. Index 0 is the most
 common map colour (the ocean), which also makes it the panel background.
@@ -38,6 +39,7 @@ MAP_W, MAP_H = 320, 160
 TERRAIN_SLOTS = [0] + list(range(8, 16))
 LIGHT_PEN = 4                  # drawn as 4 + 16: only ever on the night side
 LIGHT_RGB = (15, 13, 7)        # warm sodium-lamp glow
+ALIEN_RGB = (4, 15, 2)         # little green man
 
 # Black Marble: grey land/ice background stays below this; lights above it
 LIGHT_FLOOR = 60
@@ -139,7 +141,7 @@ def build(src_png, lights_png, out_c, preview):
         palette[slot + 16] = night(cols12[src])
     for idx, c in UI.items():
         palette[idx] = c
-    palette[LIGHT_PEN] = palette[0]
+    palette[LIGHT_PEN] = ALIEN_RGB
     palette[LIGHT_PEN + 16] = LIGHT_RGB
 
     lights, lit = light_mask(lights_png)

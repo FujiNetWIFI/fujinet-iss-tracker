@@ -3,18 +3,18 @@
  * @license gpl v. 3, see LICENSE for details.
  * @verbose UFO sighting: flight path and artwork (portable, integer only)
  *
- * A sighting is a fixed number of frames: the saucer swoops in from a map
- * edge, growing as it nears, hovers while its pilot pokes its head out for
- * a look around, then shrinks away towards another edge.
+ * A sighting is a fixed number of frames: the saucer swoops in from off
+ * the map, growing as it nears, hovers while its pilot pokes its head out
+ * for a look around, then shrinks away off another edge.
  */
 
 #ifndef UFO_PATH_H
 #define UFO_PATH_H
 
-#define UFO_SIZES 4              /* distant speck ... full-size saucer */
+#define UFO_SIZES 6              /* distant speck ... full-size saucer */
 #define UFO_LOOKS 3              /* the pilot looks ahead, left, right */
-#define UFO_HEAD_W 7
-#define UFO_HEAD_H 6
+#define UFO_HEAD_W 13
+#define UFO_HEAD_H 12
 
 #define UFO_IN    50             /* frames swooping in */
 #define UFO_HOVER 100            /* frames hovering */
@@ -45,7 +45,8 @@ typedef struct
 
 typedef struct
 {
-    int x, y;                    /* saucer centre, map pixels */
+    int x, y;                    /* saucer centre, map pixels (may be
+                                    off the map at either end) */
     int size;                    /* 0 .. UFO_SIZES - 1 */
     int rise;                    /* head rows showing above the dome */
     int look;                    /* 0 .. UFO_LOOKS - 1 */
@@ -54,7 +55,7 @@ typedef struct
 /* Small LCG, 0..32767 */
 unsigned long ufo_rand(unsigned long *seed);
 
-/* Pick a random flight: in from one map edge, out towards another. */
+/* Pick a random flight: in from off one map edge, out off another. */
 void ufo_path_init(ufo_path *p, unsigned long *seed);
 
 /* Pose for frame step; returns 0 once the flight is over. */
