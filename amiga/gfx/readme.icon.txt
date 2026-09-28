@@ -1,0 +1,14 @@
+..WWWWWWWWWWWWWWWWWW......
+..W.................WB....
+..W.................W.B...
+..W..OOOOOOOOOO.....WWWB..
+..W....................B..
+..W..OOOOOOOOOOOOO.....B..
+..W....................B..
+..W..OOOOOOOOOOOOOOOO..B..
+..W....................B..
+..W..OOOOOOOOOOO.......B..
+..W....................B..
+..W..OOOOOOOOO.........B..
+..W....................B..
+..BBBBBBBBBBBBBBBBBBBBBB..
