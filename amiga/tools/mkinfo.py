@@ -1,23 +1,26 @@
 #!/usr/bin/env python3
-"""Build Workbench 1.3 compatible .info icons from text pixel art.
+"""Build Workbench .info icons from text pixel art.
 
-Each gfx/*.icon.txt file is a grid with one character per pixel, using the
-four Workbench 1.3 pens:
+Workbench 1.3 and 2.x+ give the four icon pens different colours, so there
+are two sets of art, one character per pixel, each naming colours in its
+own palette:
 
-  .  pen 0  blue (background)
-  W  pen 1  white
-  B  pen 2  black
-  O  pen 3  orange
+  gfx/*.icon.txt  (Workbench 1.3)     gfx/*.icon2.txt  (Workbench 2.x+)
+    .  pen 0  blue (background)         .  pen 0  grey (background)
+    W  pen 1  white                     B  pen 1  black
+    B  pen 2  black                     W  pen 2  white
+    O  pen 3  orange                    U  pen 3  blue
 
-Icons are written in the original (OS 1.x) DiskObject format: two-bitplane
-Image, complemented highlight, no OS 2.x extensions, so they also load on
-every later Workbench. Standard library only; Pillow is used for --preview
-if present.
+Both sets are written in the original (OS 1.x) DiskObject format: a
+two-bitplane Image with complemented highlight and no OS 2.x extensions,
+which every Workbench loads. Standard library only; Pillow is used for
+--preview if present.
 
 Usage: mkinfo.py [--preview out.png]     (run from amiga/)
 """
 
 import argparse
+import os
 import struct
 import sys
 
@@ -31,18 +34,23 @@ GADGHCOMP = 0x0000
 RELVERIFY, GADGIMMEDIATE = 0x0001, 0x0002
 BOOLGADGET = 0x0001
 
-PENS = {".": 0, "W": 1, "B": 2, "O": 3}
-WB13_RGB = [(0x00, 0x55, 0xAA), (0xFF, 0xFF, 0xFF), (0x00, 0x00, 0x22), (0xFF, 0x88, 0x00)]
+PALETTES = {
+    # art suffix, output dir, character -> pen, preview RGB per pen
+    "wb13": (".icon.txt", "icons/wb13", {".": 0, "W": 1, "B": 2, "O": 3},
+             [(0x00, 0x55, 0xAA), (0xFF, 0xFF, 0xFF), (0x00, 0x00, 0x22), (0xFF, 0x88, 0x00)]),
+    "wb2": (".icon2.txt", "icons/wb2", {".": 0, "B": 1, "W": 2, "U": 3},
+            [(0xAA, 0xAA, 0xAA), (0x00, 0x00, 0x00), (0xFF, 0xFF, 0xFF), (0x66, 0x88, 0xBB)]),
+}
 
 ICONS = [
-    # art file, output, type, default tool, stack
-    ("gfx/isstracker.icon.txt", "icons/ISSTracker.info", WBTOOL, None, 8192),
-    ("gfx/disk.icon.txt", "icons/Disk.info", WBDISK, "SYS:System/DiskCopy", 0),
-    ("gfx/readme.icon.txt", "icons/ReadMe.info", WBPROJECT, "SYS:Utilities/More", 4096),
+    # art name, icon name, type, default tool, stack
+    ("isstracker", "ISSTracker.info", WBTOOL, None, 8192),
+    ("disk", "Disk.info", WBDISK, "SYS:System/DiskCopy", 0),
+    ("readme", "ReadMe.info", WBPROJECT, "SYS:Utilities/More", 4096),
 ]
 
 
-def load_art(path):
+def load_art(path, pens):
     with open(path) as f:
         rows = [line.rstrip("\n") for line in f if line.strip()]
     width = max(len(r) for r in rows)
@@ -50,7 +58,7 @@ def load_art(path):
     for y, row in enumerate(rows):
         row = row.ljust(width, ".")
         try:
-            grid.append([PENS[c] for c in row])
+            grid.append([pens[c] for c in row])
         except KeyError as e:
             sys.exit(f"{path}:{y + 1}: unknown pixel {e}")
     return grid
@@ -133,7 +141,8 @@ def check_icon(data, grid, kind):
     assert (iw, ih, depth) == (w, h, 2)
 
 
-def preview(images, path):
+def preview(rows, path):
+    """rows: [(rgb palette, [grid, ...]), ...], one row per Workbench."""
     try:
         from PIL import Image
     except ImportError:
@@ -141,18 +150,24 @@ def preview(images, path):
         return
     scale = 3
     pad = 8
-    width = sum(len(g[0]) for g in images) + pad * (len(images) + 1)
-    height = max(len(g) for g in images) * 2 + pad * 2
-    img = Image.new("RGB", (width, height), WB13_RGB[0])
-    x0 = pad
-    for g in images:
-        for y, row in enumerate(g):
-            for x, p in enumerate(row):
-                # Workbench runs in hires: pixels are twice as tall as wide
-                img.putpixel((x0 + x, pad + y * 2), WB13_RGB[p])
-                img.putpixel((x0 + x, pad + y * 2 + 1), WB13_RGB[p])
-        x0 += len(g[0]) + pad
-    img.resize((width * scale, height * scale), Image.NEAREST).save(path)
+    width = max(sum(len(g[0]) for g in grids) + pad * (len(grids) + 1)
+                for _, grids in rows)
+    row_h = max(len(g) for _, grids in rows for g in grids) * 2 + pad * 2
+    img = Image.new("RGB", (width, row_h * len(rows)))
+    for r, (rgb, grids) in enumerate(rows):
+        y0 = r * row_h
+        for y in range(row_h):
+            for x in range(width):
+                img.putpixel((x, y0 + y), rgb[0])
+        x0 = pad
+        for g in grids:
+            for y, row in enumerate(g):
+                for x, p in enumerate(row):
+                    # Workbench runs in hires: pixels are twice as tall as wide
+                    img.putpixel((x0 + x, y0 + pad + y * 2), rgb[p])
+                    img.putpixel((x0 + x, y0 + pad + y * 2 + 1), rgb[p])
+            x0 += len(g[0]) + pad
+    img.resize((width * scale, row_h * len(rows) * scale), Image.NEAREST).save(path)
 
 
 def main():
@@ -161,17 +176,22 @@ def main():
     ap.add_argument("--preview", help="write a PNG preview of all icons")
     a = ap.parse_args()
 
-    grids = []
-    for art, out, kind, tool, stack in ICONS:
-        grid = load_art(art)
-        data = build_icon(grid, kind, tool, stack)
-        check_icon(data, grid, kind)
-        with open(out, "wb") as f:
-            f.write(data)
-        grids.append(grid)
-        print(f"{out}: {len(grid[0])}x{len(grid)}, {len(data)} bytes")
+    rows = []
+    for suffix, out_dir, pens, rgb in PALETTES.values():
+        os.makedirs(out_dir, exist_ok=True)
+        grids = []
+        for art, name, kind, tool, stack in ICONS:
+            grid = load_art(f"gfx/{art}{suffix}", pens)
+            data = build_icon(grid, kind, tool, stack)
+            check_icon(data, grid, kind)
+            out = f"{out_dir}/{name}"
+            with open(out, "wb") as f:
+                f.write(data)
+            grids.append(grid)
+            print(f"{out}: {len(grid[0])}x{len(grid)}, {len(data)} bytes")
+        rows.append((rgb, grids))
     if a.preview:
-        preview(grids, a.preview)
+        preview(rows, a.preview)
 
 
 if __name__ == "__main__":
