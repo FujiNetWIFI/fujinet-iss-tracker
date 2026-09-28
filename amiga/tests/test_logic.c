@@ -8,6 +8,8 @@
 #include "../src/geo.h"
 #include "../src/json.h"
 #include "../src/night.h"
+#include "../src/region.h"
+#include "../src/config.h"
 
 static int failures;
 
@@ -221,6 +223,91 @@ static void test_night_lights(void)
     CHECK(day > 0);
 }
 
+static int within(long a, long b, long tol)
+{
+    return a >= b - tol && a <= b + tol;
+}
+
+static void test_inverse_trig(void)
+{
+    CHECK(within(geo_asin(8192), 3000, 2));
+    CHECK(geo_asin(GEO_ONE) == 9000 && geo_asin(-GEO_ONE) == -9000);
+    CHECK(within(geo_acos(0), 9000, 1));
+    CHECK(within(geo_acos(8192), 6000, 2));
+    CHECK(within(geo_atan2(100, 100), 4500, 2));
+    CHECK(within(geo_atan2(-100, -100), -13500, 2));
+    CHECK(within(geo_atan2(0, -100), 18000, 1));
+    CHECK(within(geo_atan2(100, 0), 9000, 1));
+    CHECK(geo_wrap_lon(18000) == -18000 && geo_wrap_lon(-18100) == 17900);
+}
+
+static void test_great_circle(void)
+{
+    long lat, lon, a;
+    int b;
+
+    CHECK(within(geo_angle_between(0, 0, 0, 9000), 9000, 5));
+    /* London - New York is about 5570 km */
+    a = geo_angle_between(5151, -13, 4071, -7401);
+    CHECK(within(geo_angle_to_km(a), 5570, 40));
+
+    geo_destination(0, 0, 9000, 2000, &lat, &lon);
+    CHECK(within(lat, 0, 3) && within(lon, 2000, 5));
+    geo_destination(0, 0, 0, 2000, &lat, &lon);
+    CHECK(within(lat, 2000, 3) && within(lon, 0, 3));
+    /* footprint points really are 20.3 degrees away, even across the
+     * date line and at the ISS's highest latitude */
+    for (b = 0; b < 36000; b += 4500)
+    {
+        geo_destination(5160, 17000, b, 2030, &lat, &lon);
+        CHECK(within(geo_angle_between(5160, 17000, lat, lon), 2030, 15));
+    }
+}
+
+static void test_extrapolate(void)
+{
+    long lat, lon;
+
+    /* crossing the date line eastwards */
+    CHECK(geo_extrapolate(0, 17900, 1000, 100, -17900, 1060, 30, &lat, &lon));
+    CHECK(lat == 150 && lon == -17800);
+    /* stale or unordered fixes are not used */
+    CHECK(!geo_extrapolate(0, 0, 1000, 100, 100, 1300, 30, &lat, &lon));
+    CHECK(lat == 100 && lon == 100);
+    CHECK(!geo_extrapolate(0, 0, 1060, 100, 100, 1060, 30, &lat, &lon));
+}
+
+static void test_regions(void)
+{
+    CHECK(!strcmp(region_name(5150, -10), "United Kingdom"));
+    CHECK(!strcmp(region_name(3570, 13970), "Japan"));
+    CHECK(!strcmp(region_name(0, -3000), "South Atlantic Ocean"));
+    CHECK(!strcmp(region_name(2000, -15500), "North Pacific Ocean"));
+    CHECK(!strcmp(region_name(-8000, 0), "Antarctica"));
+    CHECK(!strcmp(region_name(-9000, 17999), "Antarctica"));
+    CHECK(!strcmp(region_name(9000, -18000), "Arctic Ocean"));
+}
+
+static void test_config(void)
+{
+    config c;
+
+    config_defaults(&c);
+    CHECK(!config_has_home(&c) && c.saver_minutes == 10 && c.sound);
+    CHECK(config_arg(&c, "HOMELAT=40.71"));
+    CHECK(!config_has_home(&c));
+    CHECK(config_arg(&c, "homelon=-74.01"));
+    CHECK(config_has_home(&c) && c.home_lat == 4071 && c.home_lon == -7401);
+    CHECK(config_arg(&c, "HOMELAT=95"));        /* out of range: ignored */
+    CHECK(c.home_lat == 4071);
+    CHECK(config_arg(&c, "SAVER=0") && c.saver_minutes == 0);
+    CHECK(config_arg(&c, "Sound=Off") && !c.sound);
+    CHECK(config_arg(&c, "SOUND=ON") && c.sound);
+    CHECK(!config_arg(&c, "(HOMELAT=1)"));      /* bracketed ToolType */
+    CHECK(!config_arg(&c, "HOMELATX=1"));
+    CHECK(!config_arg(&c, "WINDOW=CON:"));
+}
+
 int main(void)
 {
     test_json();
@@ -231,6 +318,11 @@ int main(void)
     test_terminator();
     test_night_plane();
     test_night_lights();
+    test_inverse_trig();
+    test_great_circle();
+    test_extrapolate();
+    test_regions();
+    test_config();
 
     if (failures)
     {

@@ -4,14 +4,24 @@ Shows the International Space Station on a 32-colour world map. It runs in a
 window on its own 320×256 (PAL) or 320×200 (NTSC) lores screen. The map
 shows:
 
-- the ISS as a colour-cycling hardware sprite;
+- the ISS as a colour-cycling hardware sprite, moving smoothly between
+  fixes (dead-reckoned every second from the last two);
+- the ISS's visibility footprint: the circle of places that can see it;
 - an astronaut who goes on a spacewalk around the station every two
   minutes (a second hardware sprite);
 - day/night shading for the current time, with a soft terminator;
 - city lights on the night side, placed from NASA's Black Marble satellite
-  imagery of the Earth at night;
+  imagery of the Earth at night, twinkling town by town;
 - the ISS ground track from roughly the last four hours (two to three orbits);
-- latitude, longitude and UTC time in a panel below.
+- latitude, longitude and UTC time in a panel below, ticking live, with
+  the country or ocean the ISS is over;
+- optionally your home: a crosshair on the map, the distance to the ISS,
+  and an alert when the ISS comes over your horizon.
+
+It plays Paula sound effects: a sonar ping for each fix, three pings when
+the ISS comes into view of home, and NASA "Quindar" beeps as an astronaut
+goes out and comes back in. After 10 idle minutes (or **B**) it switches to
+a screen saver with just the map and the ISS.
 
 Press **W** to open a window listing who is in space. The ISS position comes
 from [Open Notify](http://open-notify.org/)
@@ -58,6 +68,12 @@ build doesn't need Python:
 - `make regen-map` rebuilds the map data from `gfx/map.png` and the
   city light intensities in `gfx/lights.png`. It needs Python 3 and Pillow,
   and writes `build/map-preview.png`.
+- `make regen-regions` rebuilds the "what's below" data from
+  `gfx/regions.png` and `gfx/regions.txt`. To rebuild those from Natural
+  Earth's GeoJSON, run `tools/mkregions.py --countries
+  ne_110m_admin_0_countries.geojson --marine
+  ne_110m_geography_marine_polys.geojson gfx/regions.png gfx/regions.txt
+  src/region_data.c`.
 - `make regen-icons` rebuilds the icons from the `gfx/*.icon.txt` pixel art
   and writes `build/icon-preview.png`.
 
@@ -87,6 +103,8 @@ python3 tools/png2planar.py --source land_shallow_topo_2048.jpg \
 | R | Refresh now |
 | W | Who's in space |
 | S | Send the astronaut on a spacewalk now |
+| M | Sound on/off |
+| B | Screen saver (any key or click returns) |
 | T | Ground track on/off |
 | N | Night shading on/off |
 | Q / Esc | Quit (or use the close gadget) |
@@ -97,6 +115,23 @@ shortcuts.
 If `fujinet-nio.device` isn't loaded, the app says so once and keeps
 retrying every 15 seconds. A failed fetch keeps the last position on screen
 and retries after 5 seconds.
+
+### Settings
+
+Set these as ToolTypes in the icon (select it, then Info from the Workbench
+menu), or as Shell arguments, e.g. `ISSTracker HOMELAT=51.48 HOMELON=-0.01`:
+
+| Setting | Meaning |
+|---|---|
+| `HOMELAT=`, `HOMELON=` | Your location in decimal degrees (south and west negative). Needs both. |
+| `SAVER=` | Idle minutes before the screen saver; `0` turns it off. Default 10. |
+| `SOUND=OFF` | Start with sound effects off. |
+
+The icon ships with example `(HOMELAT=40.71)` and `(HOMELON=-74.01)` entries
+in brackets, which Workbench ignores: fill in your own location and remove
+the brackets. The footprint is the horizon circle for the ISS's ~420 km
+altitude (20.3 degrees of arc, about 2,250 km), so "in view" means above the
+horizon, not necessarily high in the sky.
 
 ## How it works
 
@@ -130,8 +165,15 @@ where the sun sets.
 | `src/who.c` | "Who's in space" window |
 | `src/fetch.c` | HTTP GET through fujinet-nio-lib, ISS response parsing |
 | `src/json.c` | Minimal JSON value and array extraction |
-| `src/geo.c` | Coordinates, UTC, fixed-point trig, terminator |
+| `src/geo.c` | Coordinates, UTC, fixed-point trig and inverse trig, great-circle maths, dead reckoning, terminator |
+| `src/home.c` | Home crosshair, visibility footprint, distance and in-view test |
+| `src/region.c` | "What's below" lookup |
+| `src/sound.c` | Paula sound effects through `audio.device` |
+| `src/twinkle.c` | Twinkling city lights |
+| `src/config.c` | ToolType / Shell argument settings |
 | `src/map_data.c` | Generated planar map and 32-colour palette |
+| `src/region_data.c` | Generated 1-degree country/ocean grid |
+| `tools/mkregions.py` | Natural Earth outlines to the region grid |
 | `tools/png2planar.py` | Map and night-light images to palette and planar data |
 | `tools/mkinfo.py` | Pixel art to `.info` icons that suit every Workbench palette |
 | `tests/test_logic.c` | Host tests for the portable logic |
@@ -144,5 +186,8 @@ where the sun sets.
 - City lights come from NASA Earth Observatory's
   [Black Marble 2016](https://earthobservatory.nasa.gov/features/NightLights),
   which is public domain.
+- Country and ocean names and outlines come from
+  [Natural Earth](https://www.naturalearthdata.com/) 1:110m data, which is
+  public domain.
 - ISS position and crew data come from [Open Notify](http://open-notify.org/)
   by Nathan Bergey.

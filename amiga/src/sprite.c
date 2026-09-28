@@ -216,10 +216,12 @@ void sprite_place(int x, int y, int top)
     sprite_tick_visual();
 }
 
-void sprite_spacewalk(void)
+int sprite_spacewalk(void)
 {
-    if (astro.num >= 0 && walk < 0 && map_y0 >= 0)
-        walk = 0;
+    if (astro.num < 0 || walk >= 0 || map_y0 < 0)
+        return 0;
+    walk = 0;
+    return 1;
 }
 
 /* Astronaut position for the current walk step, relative to the ISS. */
@@ -269,10 +271,12 @@ static void sprite_tick_visual(void)
         show(&astro, 0, sx, sy);
 }
 
-void sprite_tick(void)
+int sprite_tick(void)
 {
+    int ended = 0;
+
     if (iss.num < 0)
-        return;
+        return 0;
 
     ticks++;
     if (ticks % COLOUR_TICKS == 0)
@@ -285,9 +289,13 @@ void sprite_tick(void)
     }
 
     if (walk >= 0 && ++walk >= WALK_STEPS)
+    {
         walk = -1;
+        ended = 1;
+    }
 
     sprite_tick_visual();
+    return ended;
 }
 
 void sprite_suspend(int on)

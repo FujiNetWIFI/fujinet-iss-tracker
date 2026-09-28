@@ -42,11 +42,20 @@ PENS = {".": 0, "W": 1, "B": 2, "O": 3}
 WB13_RGB = [(0x00, 0x55, 0xAA), (0xFF, 0xFF, 0xFF), (0x00, 0x00, 0x22), (0xFF, 0x88, 0x00)]
 WB2_RGB = [(0xAA, 0xAA, 0xAA), (0x00, 0x00, 0x00), (0xFF, 0xFF, 0xFF), (0x66, 0x88, 0xBB)]
 
+# Settings a user edits with Workbench's Info window. Bracketed entries are
+# ignored until the brackets are removed (see src/config.h).
+APP_TOOLTYPES = [
+    "(HOMELAT=40.71)",
+    "(HOMELON=-74.01)",
+    "SAVER=10",
+    "SOUND=ON",
+]
+
 ICONS = [
-    # art file, output, type, default tool, stack
-    ("gfx/isstracker.icon.txt", "icons/ISSTracker.info", WBTOOL, None, 8192),
-    ("gfx/disk.icon.txt", "icons/Disk.info", WBDISK, "SYS:System/DiskCopy", 0),
-    ("gfx/readme.icon.txt", "icons/ReadMe.info", WBPROJECT, "SYS:Utilities/More", 4096),
+    # art file, output, type, default tool, stack, tool types
+    ("gfx/isstracker.icon.txt", "icons/ISSTracker.info", WBTOOL, None, 8192, APP_TOOLTYPES),
+    ("gfx/disk.icon.txt", "icons/Disk.info", WBDISK, "SYS:System/DiskCopy", 0, []),
+    ("gfx/readme.icon.txt", "icons/ReadMe.info", WBPROJECT, "SYS:Utilities/More", 4096, []),
 ]
 
 
@@ -84,7 +93,7 @@ def cstring(s):
     return struct.pack(">L", len(b)) + b
 
 
-def build_icon(grid, kind, default_tool, stack):
+def build_icon(grid, kind, default_tool, stack, tooltypes):
     w, h = len(grid[0]), len(grid)
     has_drawer = kind in (WBDISK, WBDRAWER)
 
@@ -107,7 +116,7 @@ def build_icon(grid, kind, default_tool, stack):
         ">BBLLllLLl",
         kind, 0,
         1 if default_tool else 0,   # DefaultTool
-        0,                          # ToolTypes
+        1 if tooltypes else 0,      # ToolTypes
         NO_ICON_POSITION - (1 << 32), NO_ICON_POSITION - (1 << 32),
         1 if has_drawer else 0,     # DrawerData
         0,                          # ToolWindow
@@ -126,6 +135,11 @@ def build_icon(grid, kind, default_tool, stack):
     out += image_data(grid)
     if default_tool:
         out += cstring(default_tool)
+    if tooltypes:
+        # the array size in bytes (including its NULL), then each string
+        out += struct.pack(">L", (len(tooltypes) + 1) * 4)
+        for t in tooltypes:
+            out += cstring(t)
     return bytes(out)
 
 
@@ -176,9 +190,9 @@ def main():
     a = ap.parse_args()
 
     grids = []
-    for art, out, kind, tool, stack in ICONS:
+    for art, out, kind, tool, stack, tooltypes in ICONS:
         grid = load_art(art)
-        data = build_icon(grid, kind, tool, stack)
+        data = build_icon(grid, kind, tool, stack, tooltypes)
         check_icon(data, grid, kind)
         with open(out, "wb") as f:
             f.write(data)

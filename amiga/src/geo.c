@@ -213,3 +213,118 @@ void geo_terminator(unsigned long ts, unsigned char edge[MAP_W],
         edge[x] = (unsigned char)lo;
     }
 }
+
+long geo_asin(long s)
+{
+    long lo = -9000L, hi = 9000L;
+
+    if (s >= GEO_ONE)
+        return 9000L;
+    if (s <= -GEO_ONE)
+        return -9000L;
+    while (lo < hi)
+    {
+        long mid = lo + (hi - lo) / 2;
+
+        if (geo_sin(mid) < s)
+            lo = mid + 1;
+        else
+            hi = mid;
+    }
+    return lo;
+}
+
+long geo_acos(long c)
+{
+    return 9000L - geo_asin(c);
+}
+
+long geo_atan2(long y, long x)
+{
+    long ax = x < 0 ? -x : x;
+    long ay = y < 0 ? -y : y;
+    long lo = 0, hi = 9000L, a;
+
+    if (!ax && !ay)
+        return 0;
+    /* keep the products below 2^31 */
+    while (ax > 32767L || ay > 32767L)
+    {
+        ax >>= 1;
+        ay >>= 1;
+    }
+    while (lo < hi)
+    {
+        long mid = (lo + hi) / 2;
+
+        if (geo_sin(mid) * ax < geo_cos(mid) * ay)
+            lo = mid + 1;
+        else
+            hi = mid;
+    }
+    a = lo;
+    if (x < 0)
+        a = 18000L - a;
+    return y < 0 ? -a : a;
+}
+
+long geo_wrap_lon(long lon)
+{
+    lon %= 36000L;
+    if (lon >= 18000L)
+        lon -= 36000L;
+    else if (lon < -18000L)
+        lon += 36000L;
+    return lon;
+}
+
+long geo_angle_between(long lat1, long lon1, long lat2, long lon2)
+{
+    long c = (geo_sin(lat1) * geo_sin(lat2)) / GEO_ONE +
+             (geo_cos(lat1) * geo_cos(lat2) / GEO_ONE) *
+             geo_cos(lon2 - lon1) / GEO_ONE;
+
+    return geo_acos(c);
+}
+
+long geo_angle_to_km(long ang_h)
+{
+    /* 6371 km * pi / 180 = 111.19 km per degree */
+    return ang_h * 11119L / 10000L;
+}
+
+void geo_destination(long lat, long lon, long brg, long ang,
+                     long *lat2, long *lon2)
+{
+    long sl = geo_sin(lat), cl = geo_cos(lat);
+    long sd = geo_sin(ang), cd = geo_cos(ang);
+    long s2 = (sl * cd + cl * sd / GEO_ONE * geo_cos(brg)) / GEO_ONE;
+    long y, x;
+
+    *lat2 = geo_asin(s2);
+    y = geo_sin(brg) * sd / GEO_ONE * cl / GEO_ONE;
+    x = cd - sl * s2 / GEO_ONE;
+    *lon2 = geo_wrap_lon(lon + geo_atan2(y, x));
+}
+
+int geo_extrapolate(long lat0, long lon0, unsigned long t0,
+                    long lat1, long lon1, unsigned long t1,
+                    long elapsed, long *lat, long *lon)
+{
+    long dt = (long)(t1 - t0);
+    long dlon;
+
+    *lat = lat1;
+    *lon = lon1;
+    if (t1 <= t0 || dt > 180 || elapsed <= 0)
+        return 0;
+
+    dlon = geo_wrap_lon(lon1 - lon0);
+    *lat = lat1 + (lat1 - lat0) * elapsed / dt;
+    if (*lat > 9000L)
+        *lat = 9000L;
+    if (*lat < -9000L)
+        *lat = -9000L;
+    *lon = geo_wrap_lon(lon1 + dlon * elapsed / dt);
+    return 1;
+}

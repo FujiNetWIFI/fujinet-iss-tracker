@@ -40,12 +40,13 @@ CFLAGS  := -mcpu=68000 -msoft-float -mcrt=nix13 -Os -Wall -Wextra -std=gnu99 \
            -I$(FUJINET_NIO_DRIVER)/amiga/include
 LDFLAGS := -mcpu=68000 -msoft-float -mcrt=nix13 -s
 
-SRCS := main.c screen.c sprite.c night.c trail.c who.c fetch.c json.c geo.c map_data.c
+SRCS := main.c screen.c sprite.c night.c trail.c who.c fetch.c json.c geo.c \
+        map_data.c region.c region_data.c config.c home.c sound.c twinkle.c
 OBJS := $(SRCS:%.c=$(BUILD)/obj/%.o)
 
 ICONS := icons/ISSTracker.info icons/Disk.info icons/ReadMe.info
 
-.PHONY: all disk test clean regen-map regen-icons nio-lib check-env
+.PHONY: all disk test clean regen-map regen-icons regen-regions nio-lib check-env
 
 all: $(BUILD)/$(PROGRAM)
 
@@ -88,13 +89,17 @@ $(DIST)/$(PROGRAM).adf: $(BUILD)/$(PROGRAM) $(ICONS) ReadMe.txt
 test:
 	@mkdir -p $(BUILD)/host
 	$(HOSTCC) -std=c99 -Wall -Wextra -O2 -o $(BUILD)/host/test_logic \
-		tests/test_logic.c src/geo.c src/json.c src/night.c
+		tests/test_logic.c src/geo.c src/json.c src/night.c src/region.c \
+		src/region_data.c src/config.c
 	$(BUILD)/host/test_logic
 
 # Regenerate committed assets (outputs are checked in; a normal build does
 # not need Python or Pillow).
 regen-map:
 	$(PYTHON) tools/png2planar.py --preview $(BUILD)/map-preview.png gfx/map.png gfx/lights.png src/map_data.c
+
+regen-regions:
+	$(PYTHON) tools/mkregions.py gfx/regions.png gfx/regions.txt src/region_data.c
 
 regen-icons:
 	$(PYTHON) tools/mkinfo.py --preview $(BUILD)/icon-preview.png

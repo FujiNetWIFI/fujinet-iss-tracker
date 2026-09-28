@@ -16,10 +16,12 @@
 #include <proto/graphics.h>
 #include <proto/intuition.h>
 #include "geo.h"
+#include "home.h"
 #include "map_data.h"
 #include "night.h"
 #include "screen.h"
 #include "trail.h"
+#include "twinkle.h"
 
 #define DEPTH 5
 #define COLS  (320 / 8)          /* characters per panel line */
@@ -29,7 +31,7 @@ extern struct GfxBase *GfxBase;
 
 struct Screen *scr;
 struct Window *win;
-int map_top;
+static int map_top;              /* map row 0 in the main window */
 
 static struct TextAttr topaz8 = { (STRPTR)"topaz.font", 8, FS_NORMAL, FPF_ROMFONT };
 static struct BitMap off;        /* MAP_W x MAP_H, 5 planes */
@@ -37,8 +39,12 @@ static int off_ok;
 static int pal;                  /* PAL (256 lines) or NTSC (200) */
 static int panel_top;
 
+static struct Window *saver;     /* screen saver window, when showing */
+static UWORD *no_pointer;        /* chip RAM: an empty pointer sprite */
+#define NO_POINTER_WORDS 6
+
 /* Panel text rows (baseline y) for PAL and NTSC layouts */
-static int row_title, row_pos, row_time, row_status, row_help;
+static int row_title, row_pos, row_time, row_home, row_status, row_help;
 
 static void text_at(int x, int y, int pen, const char *s)
 {
@@ -76,12 +82,13 @@ static void layout_panel(void)
         row_title = base + 2;
         row_pos = base + 2 + LINE_H * 2;
         row_time = row_pos + LINE_H;
-        row_status = row_time + LINE_H * 2;
-        row_help = row_status + LINE_H * 2;
+        row_home = row_time + LINE_H;
+        row_status = row_home + LINE_H;
+        row_help = row_status + LINE_H;
     }
     else
     {
-        row_title = row_help = -1;
+        row_title = row_home = row_help = -1;
         row_pos = base;
         row_time = base + LINE_H;
         row_status = base + LINE_H * 2;
@@ -102,7 +109,10 @@ static void draw_panel_frame(void)
         text_at((320 - 27 * 8) / 2, row_title, PEN_LABEL,
                 "INTERNATIONAL SPACE STATION");
     if (row_help > 0)
-        text_at(8, row_help, PEN_RULE, "R:Now W:Crew T:Trail N:Night Q:Quit");
+    {
+        text_at(8, row_help, PEN_RULE, "R:Now W:Crew S:Walk T:Trail N:Night");
+        text_at(8, row_help + LINE_H, PEN_RULE, "M:Sound B:Saver Q:Quit");
+    }
 
     /* Placeholders until the first fix arrives */
     text_at(8, row_pos, PEN_LABEL, "LAT");
@@ -179,6 +189,8 @@ int screen_open(struct Menu *menu, const char **why)
     }
     off_ok = 1;
 
+    no_pointer = AllocMem(NO_POINTER_WORDS * 2, MEMF_CHIP | MEMF_CLEAR);
+
     layout_panel();
     draw_panel_frame();
     return 1;
@@ -188,6 +200,12 @@ void screen_close(void)
 {
     int p;
 
+    screen_saver(0);
+    if (no_pointer)
+    {
+        FreeMem(no_pointer, NO_POINTER_WORDS * 2);
+        no_pointer = 0;
+    }
     if (win)
     {
         ClearMenuStrip(win);
@@ -240,8 +258,80 @@ void screen_draw_map(const iss_pos *pos, int night, int trail)
         SetAPen(&rp, PEN_TRAIL);
         trail_draw(&rp, 0);
     }
+    InitRastPort(&rp);
+    rp.BitMap = &off;
+    home_draw_marker(&rp, 0);
 
-    BltBitMapRastPort(&off, 0, 0, win->RPort, 0, map_top, MAP_W, MAP_H, 0xC0);
+    BltBitMapRastPort(&off, 0, 0, screen_map_rp(), 0, screen_map_y(),
+                      MAP_W, MAP_H, 0xC0);
+    footprint_forget();
+    twinkle_reset();
+}
+
+struct RastPort *screen_map_rp(void)
+{
+    return saver ? saver->RPort : win->RPort;
+}
+
+int screen_map_y(void)
+{
+    return saver ? (saver->Height - MAP_H) / 2 : map_top;
+}
+
+const struct BitMap *screen_map_bitmap(void)
+{
+    return &off;
+}
+
+struct Window *screen_saver_window(void)
+{
+    return saver;
+}
+
+int screen_saver(int on)
+{
+    struct NewWindow nw;
+
+    if (on && !saver && scr)
+    {
+        footprint_hide();
+        memset(&nw, 0, sizeof nw);
+        nw.Width = scr->Width;
+        nw.Height = scr->Height;
+        nw.DetailPen = (UBYTE)-1;
+        nw.BlockPen = (UBYTE)-1;
+        nw.IDCMPFlags = IDCMP_RAWKEY | IDCMP_MOUSEBUTTONS;
+        nw.Flags = WFLG_BORDERLESS | WFLG_ACTIVATE | WFLG_RMBTRAP |
+                   WFLG_SMART_REFRESH | WFLG_NOCAREREFRESH;
+        nw.Screen = scr;
+        nw.Type = CUSTOMSCREEN;
+        saver = OpenWindow(&nw);
+        if (!saver)
+            return 0;
+        if (no_pointer)
+            SetPointer(saver, no_pointer, 1, 16, 0, 0);
+        SetAPen(saver->RPort, PEN_SHADOW);
+        RectFill(saver->RPort, 0, 0, saver->Width - 1, saver->Height - 1);
+    }
+    else if (!on && saver)
+    {
+        footprint_hide();
+        CloseWindow(saver);
+        saver = 0;
+        ActivateWindow(win);
+    }
+    else
+        return saver != 0;
+
+    /* show the composed map on the new surface */
+    if (off_ok)
+    {
+        BltBitMapRastPort(&off, 0, 0, screen_map_rp(), 0, screen_map_y(),
+                          MAP_W, MAP_H, 0xC0);
+        footprint_forget();
+        twinkle_reset();
+    }
+    return saver != 0;
 }
 
 static void format_coord(char *out, long v, char pos, char neg)
@@ -275,6 +365,12 @@ void screen_draw_position(const iss_pos *pos)
 void screen_status(const char *text, int pen)
 {
     field_at(1, row_status, 28, pen, text);
+}
+
+void screen_home(const char *text, int pen)
+{
+    if (row_home > 0)
+        field_at(1, row_home, 38, pen, text);
 }
 
 void screen_countdown(int secs)

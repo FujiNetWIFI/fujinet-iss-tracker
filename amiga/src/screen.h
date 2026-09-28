@@ -12,20 +12,31 @@
 
 extern struct Screen *scr;
 extern struct Window *win;
-extern int map_top;          /* first map row in window/screen coordinates */
 
 /* Open the 32 colour screen and its window. Returns 0 on failure with a
  * reason in *why. */
 int screen_open(struct Menu *menu, const char **why);
 void screen_close(void);
 
-/* Rebuild the map (terrain, optional night shading and trail) off screen
- * and blit it into the window. pos may be NULL before the first fix. */
+/* Rebuild the map (terrain, optional night shading and lights, trail and
+ * home marker) off screen and blit it where the map is shown. pos may be
+ * NULL before the first fix. */
 void screen_draw_map(const iss_pos *pos, int night, int trail);
+
+/* Where the map is shown: the main window, or the screen saver. */
+struct RastPort *screen_map_rp(void);
+int screen_map_y(void);                 /* screen row of map row 0 */
+const struct BitMap *screen_map_bitmap(void);   /* the composed map */
+
+/* Screen saver: a full-screen window with just the map and the ISS, and
+ * no pointer. Returns 1 if it is now showing. */
+int screen_saver(int on);
+struct Window *screen_saver_window(void);
 
 /* Status panel. */
 void screen_draw_position(const iss_pos *pos);
 void screen_status(const char *text, int pen);
 void screen_countdown(int secs);
+void screen_home(const char *text, int pen);   /* PAL only */
 
 #endif /* SCREEN_H */

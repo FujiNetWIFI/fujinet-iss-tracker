@@ -7,19 +7,30 @@
  * Needs fujinet-nio.device resident (installed from the FujiNet NIO disk).
  */
 
+#include <stdio.h>
+#include <string.h>
 #include <exec/types.h>
 #include <devices/timer.h>
 #include <intuition/intuition.h>
+#include <workbench/startup.h>
+#include <workbench/workbench.h>
 #include <proto/alib.h>
+#include <proto/dos.h>
 #include <proto/exec.h>
 #include <proto/graphics.h>
+#include <proto/icon.h>
 #include <proto/intuition.h>
+#include "config.h"
 #include "fetch.h"
 #include "geo.h"
+#include "home.h"
 #include "map_data.h"
+#include "region.h"
 #include "screen.h"
+#include "sound.h"
 #include "sprite.h"
 #include "trail.h"
+#include "twinkle.h"
 #include "who.h"
 
 #define TICK_MICROS   100000L    /* sprite animation rate */
@@ -29,32 +40,47 @@
 #define NODEVICE_SECS 15
 #define FIRST_WALK_SECS 20       /* first spacewalk after the first fix */
 #define WALK_EVERY_SECS 120
+#define MAX_DEAD_RECKON 180      /* seconds to keep moving without a fix */
 
 struct IntuitionBase *IntuitionBase;
 struct GfxBase *GfxBase;
+struct Library *IconBase;
+extern struct WBStartup *_WBenchMsg;
 
 static struct MsgPort *timer_port;
 static struct timerequest *timer_req;
 static int timer_open;
 static int timer_pending;
 
-static iss_pos pos;
+static config cfg;
+static iss_pos pos;              /* latest fix */
+static iss_pos prev;             /* the fix before it */
+static iss_pos est;              /* dead-reckoned position now */
 static int have_pos;
+static int have_prev;
+static int since_fix;            /* seconds */
+static int tracking;             /* status line shows "Over: ..." */
+static char status_text[40];
+static int in_view;
 static int show_night = 1;
 static int show_trail = 1;
 static int countdown;
 static int walk_countdown = FIRST_WALK_SECS;
+static int idle_secs;
 static int warned_nodevice;
 
 /* ---- Menus (Intuition 1.3 structures) ---------------------------------- */
 
-enum { M_REFRESH, M_WHO, M_WALK, M_TRAIL, M_NIGHT, M_ABOUT, M_QUIT };
+enum { M_REFRESH, M_WHO, M_WALK, M_TRAIL, M_NIGHT, M_SOUND, M_SAVER,
+       M_ABOUT, M_QUIT };
 
 #define ITEM_W (LOWCHECKWIDTH + 15 * 8 + LOWCOMMWIDTH + 4)
 #define ITEM_H 10
 
 static struct IntuiText t_quit    = { 0, 1, JAM2, LOWCHECKWIDTH, 1, 0, (UBYTE *)"Quit", 0 };
 static struct IntuiText t_about   = { 0, 1, JAM2, LOWCHECKWIDTH, 1, 0, (UBYTE *)"About...", 0 };
+static struct IntuiText t_saver   = { 0, 1, JAM2, LOWCHECKWIDTH, 1, 0, (UBYTE *)"Screen saver", 0 };
+static struct IntuiText t_sound   = { 0, 1, JAM2, LOWCHECKWIDTH, 1, 0, (UBYTE *)"Sound", 0 };
 static struct IntuiText t_night   = { 0, 1, JAM2, LOWCHECKWIDTH, 1, 0, (UBYTE *)"Night shading", 0 };
 static struct IntuiText t_trail   = { 0, 1, JAM2, LOWCHECKWIDTH, 1, 0, (UBYTE *)"Ground track", 0 };
 static struct IntuiText t_walk    = { 0, 1, JAM2, LOWCHECKWIDTH, 1, 0, (UBYTE *)"Spacewalk!", 0 };
@@ -65,17 +91,55 @@ static struct IntuiText t_refresh = { 0, 1, JAM2, LOWCHECKWIDTH, 1, 0, (UBYTE *)
     { next, 0, (n) * ITEM_H, ITEM_W, ITEM_H, \
       ITEMTEXT | ITEMENABLED | HIGHCOMP | COMMSEQ | (flags), \
       0, (APTR)&text, 0, key, 0, 0 }
+#define TOGGLE (CHECKIT | MENUTOGGLE | CHECKED)
 
-static struct MenuItem i_quit = ITEM(0, 6, 0, t_quit, 'Q');
-static struct MenuItem i_about = ITEM(&i_quit, 5, 0, t_about, '?');
-static struct MenuItem i_night = ITEM(&i_about, 4, CHECKIT | MENUTOGGLE | CHECKED, t_night, 'N');
-static struct MenuItem i_trail = ITEM(&i_night, 3, CHECKIT | MENUTOGGLE | CHECKED, t_trail, 'T');
+static struct MenuItem i_quit = ITEM(0, 8, 0, t_quit, 'Q');
+static struct MenuItem i_about = ITEM(&i_quit, 7, 0, t_about, '?');
+static struct MenuItem i_saver = ITEM(&i_about, 6, 0, t_saver, 'B');
+static struct MenuItem i_sound = ITEM(&i_saver, 5, TOGGLE, t_sound, 'M');
+static struct MenuItem i_night = ITEM(&i_sound, 4, TOGGLE, t_night, 'N');
+static struct MenuItem i_trail = ITEM(&i_night, 3, TOGGLE, t_trail, 'T');
 static struct MenuItem i_walk = ITEM(&i_trail, 2, 0, t_walk, 'S');
 static struct MenuItem i_who = ITEM(&i_walk, 1, 0, t_who, 'W');
 static struct MenuItem i_refresh = ITEM(&i_who, 0, 0, t_refresh, 'R');
 
 static struct Menu menu =
     { 0, 0, 0, 72, 0, MENUENABLED, (APTR)"Project", &i_refresh, 0, 0, 0, 0 };
+
+/* ---- Settings ---------------------------------------------------------- */
+
+static void read_settings(int argc, char **argv)
+{
+    int i;
+
+    config_defaults(&cfg);
+    if (argc > 0)
+    {
+        for (i = 1; i < argc; i++)
+            config_arg(&cfg, argv[i]);
+    }
+    else if (_WBenchMsg && _WBenchMsg->sm_NumArgs > 0 &&
+             (IconBase = OpenLibrary((STRPTR)"icon.library", 33)) != 0)
+    {
+        struct WBArg *arg = &_WBenchMsg->sm_ArgList[0];
+        BPTR old = CurrentDir(arg->wa_Lock);
+        struct DiskObject *dob = GetDiskObject(arg->wa_Name);
+
+        if (dob)
+        {
+            char **tt = (char **)dob->do_ToolTypes;
+
+            for (; tt && *tt; tt++)
+                config_arg(&cfg, *tt);
+            FreeDiskObject(dob);
+        }
+        CurrentDir(old);
+        CloseLibrary(IconBase);
+        IconBase = 0;
+    }
+    if (config_has_home(&cfg))
+        home_set(cfg.home_lat, cfg.home_lon);
+}
 
 /* ---- Timer ------------------------------------------------------------- */
 
@@ -118,17 +182,78 @@ static void timer_cleanup(void)
         DeletePort(timer_port);
 }
 
+/* ---- Live position ----------------------------------------------------- */
+
+static void status(const char *text, int pen)
+{
+    tracking = 0;
+    screen_status(text, pen);
+}
+
+/* Show the dead-reckoned position: sprite, panel, footprint, home and the
+ * country or ocean below. Called every second and after every fix. */
+static void show_live(void)
+{
+    char text[40];
+    int now_in;
+
+    if (!have_pos)
+        return;
+
+    est = pos;
+    if (have_prev && since_fix <= MAX_DEAD_RECKON)
+        geo_extrapolate(prev.lat_h, prev.lon_h, prev.ts,
+                        pos.lat_h, pos.lon_h, pos.ts,
+                        since_fix, &est.lat_h, &est.lon_h);
+    est.ts = pos.ts + since_fix;
+
+    sprite_place(geo_lon_to_x(est.lon_h), geo_lat_to_y(est.lat_h),
+                 screen_map_y());
+    screen_draw_position(&est);
+    footprint_show(screen_map_rp(), screen_map_y(), est.lat_h, est.lon_h);
+
+    now_in = home_in_view(est.lat_h, est.lon_h);
+    if (home_known())
+    {
+        sprintf(text, "HOME %5ld km%s", home_distance_km(est.lat_h, est.lon_h),
+                now_in ? "   ISS IN VIEW!" : "");
+        screen_home(text, now_in ? PEN_TRAIL : PEN_TEXT);
+        if (now_in && !in_view)
+            sound_alert();
+    }
+    in_view = now_in;
+
+    if (tracking)
+    {
+        sprintf(text, "%s%.22s", now_in ? "In view: " : "Over: ",
+                region_name(est.lat_h, est.lon_h));
+        if (strcmp(text, status_text))
+        {
+            strcpy(status_text, text);
+            screen_status(text, now_in ? PEN_TRAIL : PEN_LABEL);
+        }
+    }
+}
+
+static void start_tracking(void)
+{
+    tracking = 1;
+    status_text[0] = 0;
+    show_live();
+}
+
 /* ---- Actions ----------------------------------------------------------- */
 
 static void redraw_map(void)
 {
     screen_draw_map(have_pos ? &pos : 0, show_night, show_trail);
+    show_live();
 }
 
 static void show_error(unsigned char err)
 {
-    screen_status(fetch_error(err), PEN_ERROR);
-    if (err == FETCH_ERR_NODEVICE && !warned_nodevice)
+    status(fetch_error(err), PEN_ERROR);
+    if (err == FETCH_ERR_NODEVICE && !warned_nodevice && !screen_saver_window())
     {
         static struct IntuiText l3 = { PEN_SHADOW, 1, JAM1, 8, 26, 0,
             (UBYTE *)"See ReadMe on the ISS disk.", 0 };
@@ -147,19 +272,27 @@ static void show_error(unsigned char err)
 static void update(void)
 {
     unsigned char err;
+    iss_pos fix;
 
     screen_countdown(-1);
-    screen_status("Contacting FujiNet...", PEN_TEXT);
+    status("Contacting FujiNet...", PEN_TEXT);
 
-    err = fetch_iss(&pos);
+    err = fetch_iss(&fix);
     if (err == 0)
     {
+        if (have_pos && fix.ts > pos.ts)
+        {
+            prev = pos;
+            have_prev = 1;
+        }
+        pos = fix;
         have_pos = 1;
+        since_fix = 0;
         trail_add(&pos);
+        tracking = 1;
+        status_text[0] = 0;
         redraw_map();
-        sprite_place(geo_lon_to_x(pos.lon_h), geo_lat_to_y(pos.lat_h), map_top);
-        screen_draw_position(&pos);
-        screen_status("Tracking", PEN_LABEL);
+        sound_ping();
         countdown = REFRESH_SECS;
     }
     else
@@ -172,8 +305,12 @@ static void update(void)
 
 static void about(void)
 {
+    static struct IntuiText l6 = { PEN_SHADOW, 1, JAM1, 12, 56, 0,
+        (UBYTE *)"Places: Natural Earth", 0 };
+    static struct IntuiText l5 = { PEN_SHADOW, 1, JAM1, 12, 46, 0,
+        (UBYTE *)"Lights: NASA Black Marble", &l6 };
     static struct IntuiText l4 = { PEN_SHADOW, 1, JAM1, 12, 36, 0,
-        (UBYTE *)"Map: NASA Blue Marble", 0 };
+        (UBYTE *)"Map: NASA Blue Marble", &l5 };
     static struct IntuiText l3 = { PEN_SHADOW, 1, JAM1, 12, 26, 0,
         (UBYTE *)"Data: open-notify.org", &l4 };
     static struct IntuiText l2 = { PEN_SHADOW, 1, JAM1, 12, 16, 0,
@@ -183,7 +320,7 @@ static void about(void)
     static struct IntuiText ok = { PEN_SHADOW, 1, JAM1, 6, 3, 0,
         (UBYTE *)"OK", 0 };
 
-    AutoRequest(win, &l1, 0, &ok, 0, 0, 240, 86);
+    AutoRequest(win, &l1, 0, &ok, 0, 0, 240, 106);
 }
 
 static void set_checked(struct MenuItem *item, int on)
@@ -200,14 +337,30 @@ static void crew(void)
 {
     unsigned char err;
 
-    screen_status("Fetching crew list...", PEN_TEXT);
+    status("Fetching crew list...", PEN_TEXT);
     sprite_suspend(1);
+    footprint_hide();
     err = who_show();
     sprite_suspend(0);
     if (err)
         show_error(err);
+    else if (have_pos)
+        start_tracking();
     else
-        screen_status(have_pos ? "Tracking" : "", PEN_LABEL);
+        status("", PEN_LABEL);
+}
+
+static void spacewalk(void)
+{
+    if (sprite_spacewalk())
+        sound_quindar(1);
+}
+
+static void saver(int on)
+{
+    screen_saver(on);
+    idle_secs = 0;
+    show_live();
 }
 
 /* Returns 0 to quit */
@@ -222,7 +375,7 @@ static int action(int what)
         crew();
         break;
     case M_WALK:
-        sprite_spacewalk();
+        spacewalk();
         break;
     case M_TRAIL:
         show_trail = (i_trail.Flags & CHECKED) != 0;
@@ -231,6 +384,12 @@ static int action(int what)
     case M_NIGHT:
         show_night = (i_night.Flags & CHECKED) != 0;
         redraw_map();
+        break;
+    case M_SOUND:
+        sound_enable((i_sound.Flags & CHECKED) != 0);
+        break;
+    case M_SAVER:
+        saver(1);
         break;
     case M_ABOUT:
         about();
@@ -257,10 +416,47 @@ static int key(UWORD code)
     case 'n': case 'N':
         set_checked(&i_night, !(i_night.Flags & CHECKED));
         return action(M_NIGHT);
+    case 'm': case 'M':
+        set_checked(&i_sound, !(i_sound.Flags & CHECKED));
+        return action(M_SOUND);
+    case 'b': case 'B':
+        return action(M_SAVER);
     case 'q': case 'Q': case 27:
         return 0;
     }
     return 1;
+}
+
+/* Ten times a second */
+static void tick(void)
+{
+    if (sprite_tick())
+        sound_quindar(0);
+    if (have_pos && show_night)
+        twinkle_tick(screen_map_rp(), screen_map_y(), screen_map_bitmap(),
+                     geo_lon_to_x(est.lon_h), geo_lat_to_y(est.lat_h));
+}
+
+/* Once a second */
+static void second(void)
+{
+    if (have_pos)
+    {
+        since_fix++;
+        show_live();
+    }
+    if (have_pos && --walk_countdown <= 0)
+    {
+        spacewalk();
+        walk_countdown = WALK_EVERY_SECS;
+    }
+    if (!screen_saver_window() && cfg.saver_minutes > 0 &&
+        ++idle_secs >= cfg.saver_minutes * 60)
+        saver(1);
+    if (--countdown <= 0)
+        update();
+    else
+        screen_countdown(countdown);
 }
 
 static void run(void)
@@ -276,28 +472,37 @@ static void run(void)
 
     while (running)
     {
-        ULONG sigs = Wait(win_sig | tmr_sig);
+        struct Window *sv = screen_saver_window();
+        ULONG sv_sig = sv ? 1UL << sv->UserPort->mp_SigBit : 0;
+        ULONG sigs = Wait(win_sig | tmr_sig | sv_sig);
         struct IntuiMessage *msg;
 
         if (sigs & tmr_sig)
         {
             WaitIO((struct IORequest *)timer_req);
             timer_pending = 0;
-            sprite_tick();
+            tick();
             if (++ticks >= TICKS_PER_SEC)
             {
                 ticks = 0;
-                if (have_pos && --walk_countdown <= 0)
-                {
-                    sprite_spacewalk();
-                    walk_countdown = WALK_EVERY_SECS;
-                }
-                if (--countdown <= 0)
-                    update();
-                else
-                    screen_countdown(countdown);
+                second();
             }
             timer_start();
+        }
+
+        if (sv && (sigs & sv_sig))
+        {
+            int wake = 0;
+
+            while ((msg = (struct IntuiMessage *)GetMsg(sv->UserPort)) != 0)
+            {
+                if ((msg->Class == IDCMP_RAWKEY && !(msg->Code & IECODE_UP_PREFIX)) ||
+                    (msg->Class == IDCMP_MOUSEBUTTONS && !(msg->Code & IECODE_UP_PREFIX)))
+                    wake = 1;
+                ReplyMsg((struct Message *)msg);
+            }
+            if (wake)
+                saver(0);
         }
 
         while (running && (msg = (struct IntuiMessage *)GetMsg(win->UserPort)) != 0)
@@ -306,6 +511,7 @@ static void run(void)
             UWORD code = msg->Code;
 
             ReplyMsg((struct Message *)msg);
+            idle_secs = 0;
             if (cls == IDCMP_CLOSEWINDOW)
                 running = 0;
             else if (cls == IDCMP_VANILLAKEY)
@@ -324,7 +530,7 @@ static void run(void)
     }
 }
 
-int main(void)
+int main(int argc, char **argv)
 {
     const char *why = 0;
     int rc = 20;
@@ -334,17 +540,26 @@ int main(void)
     if (!IntuitionBase || !GfxBase)
         goto out;
 
+    read_settings(argc, argv);
+    if (!cfg.sound)
+        i_sound.Flags &= ~CHECKED;
+
     if (!timer_init())
         goto out;
     if (!screen_open(&menu, &why))
         goto out;
     sprite_open(scr);
+    twinkle_init();
+    sound_open();
+    sound_enable(cfg.sound);
 
     run();
     rc = 0;
 
 out:
     fetch_shutdown();
+    sound_close();
+    twinkle_free();
     sprite_close();
     screen_close();
     timer_cleanup();
