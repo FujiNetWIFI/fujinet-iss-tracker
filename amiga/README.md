@@ -41,7 +41,7 @@ Requires:
 ```sh
 export FUJINET_NIO_LIB=/path/to/fujinet-nio-lib
 make            # -> build/ISSTracker
-make disk       # -> dist/ISSTracker-WB13.adf, dist/ISSTracker-WB2.adf
+make disk       # -> dist/ISSTracker.adf
 make test       # host-side tests of the JSON/geo/terminator logic
 ```
 
@@ -52,15 +52,14 @@ if the driver repository is somewhere else.
 This port builds standalone. The shared `../makefiles/` tree drives
 cc65-family toolchains and doesn't apply to amiga-gcc.
 
-`src/map_data.c` and `icons/*/*.info` are generated and committed, so a normal
+`src/map_data.c` and `icons/*.info` are generated and committed, so a normal
 build doesn't need Python:
 
 - `make regen-map` rebuilds the map data from `gfx/map.png` and the
   city light intensities in `gfx/lights.png`. It needs Python 3 and Pillow,
   and writes `build/map-preview.png`.
-- `make regen-icons` rebuilds both icon sets from the pixel art
-  (`gfx/*.icon.txt` for Workbench 1.3, `gfx/*.icon2.txt` for 2.x and
-  later) and writes `build/icon-preview.png`.
+- `make regen-icons` rebuilds the icons from the `gfx/*.icon.txt` pixel art
+  and writes `build/icon-preview.png`.
 
 To rebuild the two PNGs from the full-size NASA images
 (`land_shallow_topo_2048.jpg` and `BlackMarble_2016_01deg.jpg` from NASA
@@ -74,17 +73,7 @@ python3 tools/png2planar.py --source land_shallow_topo_2048.jpg \
 
 ## Running
 
-There are two disks with the same program, one per Workbench generation.
-Workbench 1.3 and 2.x+ give icon colours different meanings (1.3: blue,
-white, black, orange; 2.x+: grey, black, white, blue), so each disk
-carries icons drawn for its own palette:
-
-| Disk | Use on |
-|---|---|
-| `dist/ISSTracker-WB13.adf` | Workbench 1.3 |
-| `dist/ISSTracker-WB2.adf` | Workbench 2.x and later |
-
-Neither disk is bootable. Each holds the program, its icons and a
+`dist/ISSTracker.adf` isn't bootable. It holds the program, its icons and a
 `ReadMe`.
 
 1. Boot Workbench with the FujiNet NIO drivers installed and
@@ -144,7 +133,7 @@ where the sun sets.
 | `src/geo.c` | Coordinates, UTC, fixed-point trig, terminator |
 | `src/map_data.c` | Generated planar map and 32-colour palette |
 | `tools/png2planar.py` | Map and night-light images to palette and planar data |
-| `tools/mkinfo.py` | Pixel art to `.info` icons for Workbench 1.3 and 2.x+ |
+| `tools/mkinfo.py` | Pixel art to `.info` icons that suit every Workbench palette |
 | `tests/test_logic.c` | Host tests for the portable logic |
 
 ## Credits
