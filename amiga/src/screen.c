@@ -113,7 +113,7 @@ static void draw_panel_frame(void)
     if (row_help > 0)
     {
         text_at(8, row_help, PEN_RULE, "R:Now W:Crew S:Walk T:Trail N:Night");
-        text_at(8, row_help + LINE_H, PEN_RULE, "M:Sound B:Saver Q:Quit");
+        text_at(8, row_help + LINE_H, PEN_RULE, "V:Circle M:Sound B:Saver Q:Quit");
     }
 
     /* labels, and placeholders until the first fix */

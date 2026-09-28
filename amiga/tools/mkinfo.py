@@ -49,6 +49,7 @@ APP_TOOLTYPES = [
     "(HOMELON=-74.01)",
     "SAVER=10",
     "SOUND=ON",
+    "CIRCLE=ON",
 ]
 
 ICONS = [

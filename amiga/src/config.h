@@ -7,6 +7,7 @@
  *   HOMELAT=40.71   HOMELON=-74.01   home location, decimal degrees
  *   SAVER=10        minutes idle before the screen saver (0 = never)
  *   SOUND=OFF       start with sound effects off
+ *   CIRCLE=OFF      start with the viewing circle hidden
  * A ToolType in brackets, e.g. (HOMELAT=40.71), is ignored as usual.
  */
 
@@ -21,6 +22,7 @@ typedef struct
     long home_lon;
     int saver_minutes;
     int sound;
+    int circle;
 } config;
 
 void config_defaults(config *c);

@@ -16,11 +16,18 @@ void config_defaults(config *c)
     c->home_lat = c->home_lon = 0;
     c->saver_minutes = DEFAULT_SAVER_MINUTES;
     c->sound = 1;
+    c->circle = 1;
 }
 
 static int upper(int ch)
 {
     return ch >= 'a' && ch <= 'z' ? ch - 32 : ch;
+}
+
+/* ON unless the value is OFF or 0 */
+static int is_on(const char *v)
+{
+    return !(upper(v[0]) == 'O' && upper(v[1]) == 'F') && v[0] != '0';
 }
 
 /* If arg is KEY=value (any case), return the value, else 0. */
@@ -66,7 +73,12 @@ int config_arg(config *c, const char *arg)
     }
     if ((v = value_of(arg, "SOUND")) != 0)
     {
-        c->sound = !(upper(v[0]) == 'O' && upper(v[1]) == 'F') && v[0] != '0';
+        c->sound = is_on(v);
+        return 1;
+    }
+    if ((v = value_of(arg, "CIRCLE")) != 0)
+    {
+        c->circle = is_on(v);
         return 1;
     }
     return 0;

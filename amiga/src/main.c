@@ -65,6 +65,7 @@ static char status_text[40];
 static int in_view;
 static int show_night = 1;
 static int show_trail = 1;
+static int show_circle = 1;
 static int countdown;
 static int walk_countdown = FIRST_WALK_SECS;
 static int idle_secs;
@@ -72,8 +73,8 @@ static int warned_nodevice;
 
 /* ---- Menus (Intuition 1.3 structures) ---------------------------------- */
 
-enum { M_REFRESH, M_WHO, M_WALK, M_TRAIL, M_NIGHT, M_SOUND, M_SAVER,
-       M_ABOUT, M_QUIT };
+enum { M_REFRESH, M_WHO, M_WALK, M_TRAIL, M_NIGHT, M_CIRCLE, M_SOUND,
+       M_SAVER, M_ABOUT, M_QUIT };
 
 #define ITEM_W (LOWCHECKWIDTH + 15 * 8 + LOWCOMMWIDTH + 4)
 #define ITEM_H 10
@@ -82,6 +83,7 @@ static struct IntuiText t_quit    = { 0, 1, JAM2, LOWCHECKWIDTH, 1, 0, (UBYTE *)
 static struct IntuiText t_about   = { 0, 1, JAM2, LOWCHECKWIDTH, 1, 0, (UBYTE *)"About...", 0 };
 static struct IntuiText t_saver   = { 0, 1, JAM2, LOWCHECKWIDTH, 1, 0, (UBYTE *)"Screen saver", 0 };
 static struct IntuiText t_sound   = { 0, 1, JAM2, LOWCHECKWIDTH, 1, 0, (UBYTE *)"Sound", 0 };
+static struct IntuiText t_circle  = { 0, 1, JAM2, LOWCHECKWIDTH, 1, 0, (UBYTE *)"Viewing circle", 0 };
 static struct IntuiText t_night   = { 0, 1, JAM2, LOWCHECKWIDTH, 1, 0, (UBYTE *)"Night shading", 0 };
 static struct IntuiText t_trail   = { 0, 1, JAM2, LOWCHECKWIDTH, 1, 0, (UBYTE *)"Ground track", 0 };
 static struct IntuiText t_walk    = { 0, 1, JAM2, LOWCHECKWIDTH, 1, 0, (UBYTE *)"Spacewalk!", 0 };
@@ -94,11 +96,12 @@ static struct IntuiText t_refresh = { 0, 1, JAM2, LOWCHECKWIDTH, 1, 0, (UBYTE *)
       0, (APTR)&text, 0, key, 0, 0 }
 #define TOGGLE (CHECKIT | MENUTOGGLE | CHECKED)
 
-static struct MenuItem i_quit = ITEM(0, 8, 0, t_quit, 'Q');
-static struct MenuItem i_about = ITEM(&i_quit, 7, 0, t_about, '?');
-static struct MenuItem i_saver = ITEM(&i_about, 6, 0, t_saver, 'B');
-static struct MenuItem i_sound = ITEM(&i_saver, 5, TOGGLE, t_sound, 'M');
-static struct MenuItem i_night = ITEM(&i_sound, 4, TOGGLE, t_night, 'N');
+static struct MenuItem i_quit = ITEM(0, 9, 0, t_quit, 'Q');
+static struct MenuItem i_about = ITEM(&i_quit, 8, 0, t_about, '?');
+static struct MenuItem i_saver = ITEM(&i_about, 7, 0, t_saver, 'B');
+static struct MenuItem i_sound = ITEM(&i_saver, 6, TOGGLE, t_sound, 'M');
+static struct MenuItem i_circle = ITEM(&i_sound, 5, TOGGLE, t_circle, 'V');
+static struct MenuItem i_night = ITEM(&i_circle, 4, TOGGLE, t_night, 'N');
 static struct MenuItem i_trail = ITEM(&i_night, 3, TOGGLE, t_trail, 'T');
 static struct MenuItem i_walk = ITEM(&i_trail, 2, 0, t_walk, 'S');
 static struct MenuItem i_who = ITEM(&i_walk, 1, 0, t_who, 'W');
@@ -211,7 +214,8 @@ static void show_live(void)
     sprite_place(geo_lon_to_x(est.lon_h), geo_lat_to_y(est.lat_h),
                  screen_map_y());
     screen_draw_position(&est);
-    footprint_show(screen_map_rp(), screen_map_y(), est.lat_h, est.lon_h);
+    if (show_circle)
+        footprint_show(screen_map_rp(), screen_map_y(), est.lat_h, est.lon_h);
 
     now_in = 0;
     if (home_known())
@@ -388,6 +392,13 @@ static int action(int what)
         show_night = (i_night.Flags & CHECKED) != 0;
         redraw_map();
         break;
+    case M_CIRCLE:
+        show_circle = (i_circle.Flags & CHECKED) != 0;
+        if (show_circle)
+            show_live();
+        else
+            footprint_hide();
+        break;
     case M_SOUND:
         sound_enable((i_sound.Flags & CHECKED) != 0);
         break;
@@ -419,6 +430,9 @@ static int key(UWORD code)
     case 'n': case 'N':
         set_checked(&i_night, !(i_night.Flags & CHECKED));
         return action(M_NIGHT);
+    case 'v': case 'V':
+        set_checked(&i_circle, !(i_circle.Flags & CHECKED));
+        return action(M_CIRCLE);
     case 'm': case 'M':
         set_checked(&i_sound, !(i_sound.Flags & CHECKED));
         return action(M_SOUND);
@@ -548,6 +562,9 @@ int main(int argc, char **argv)
     read_settings(argc, argv);
     if (!cfg.sound)
         i_sound.Flags &= ~CHECKED;
+    show_circle = cfg.circle;
+    if (!show_circle)
+        i_circle.Flags &= ~CHECKED;
 
     if (!timer_init())
         goto out;

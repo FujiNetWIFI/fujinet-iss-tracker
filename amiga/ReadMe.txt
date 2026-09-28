@@ -30,6 +30,7 @@ station. Keys (also in the menu):
    S        send the astronaut on a spacewalk
    T        ground track on/off
    N        night shading on/off
+   V        viewing circle on/off
    M        sound on/off
    B        screen saver (any key or click returns)
    Q, Esc   quit (or click the close gadget)
@@ -50,7 +51,8 @@ Workbench menu and edit the Tool Types, e.g.
 brackets from the examples. From a Shell, give the same settings
 as arguments: ISSTracker HOMELAT=51.48 HOMELON=-0.01
 
-Other Tool Types: SAVER=minutes (0 = never), SOUND=OFF.
+Other Tool Types: SAVER=minutes (0 = never), SOUND=OFF,
+CIRCLE=OFF (hide the viewing circle).
 
 Credits
 -------

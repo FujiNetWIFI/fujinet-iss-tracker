@@ -103,6 +103,7 @@ python3 tools/png2planar.py --source land_shallow_topo_2048.jpg \
 | R | Refresh now |
 | W | Who's in space |
 | S | Send the astronaut on a spacewalk now |
+| V | Viewing circle on/off |
 | M | Sound on/off |
 | B | Screen saver (any key or click returns) |
 | T | Ground track on/off |
@@ -126,6 +127,7 @@ menu), or as Shell arguments, e.g. `ISSTracker HOMELAT=51.48 HOMELON=-0.01`:
 | `HOMELAT=`, `HOMELON=` | Your location in decimal degrees (south and west negative). Needs both. |
 | `SAVER=` | Idle minutes before the screen saver; `0` turns it off. Default 10. |
 | `SOUND=OFF` | Start with sound effects off. |
+| `CIRCLE=OFF` | Start with the viewing circle hidden. |
 
 The icon ships with example `(HOMELAT=40.71)` and `(HOMELON=-74.01)` entries
 in brackets, which Workbench ignores: fill in your own location and remove

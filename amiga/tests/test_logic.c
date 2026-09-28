@@ -324,7 +324,8 @@ static void test_config(void)
     config c;
 
     config_defaults(&c);
-    CHECK(!config_has_home(&c) && c.saver_minutes == 10 && c.sound);
+    CHECK(!config_has_home(&c) && c.saver_minutes == 10 && c.sound &&
+          c.circle);
     CHECK(config_arg(&c, "HOMELAT=40.71"));
     CHECK(!config_has_home(&c));
     CHECK(config_arg(&c, "homelon=-74.01"));
@@ -334,6 +335,8 @@ static void test_config(void)
     CHECK(config_arg(&c, "SAVER=0") && c.saver_minutes == 0);
     CHECK(config_arg(&c, "Sound=Off") && !c.sound);
     CHECK(config_arg(&c, "SOUND=ON") && c.sound);
+    CHECK(config_arg(&c, "circle=off") && !c.circle);
+    CHECK(config_arg(&c, "CIRCLE=1") && c.circle);
     CHECK(!config_arg(&c, "(HOMELAT=1)"));      /* bracketed ToolType */
     CHECK(!config_arg(&c, "HOMELATX=1"));
     CHECK(!config_arg(&c, "WINDOW=CON:"));
