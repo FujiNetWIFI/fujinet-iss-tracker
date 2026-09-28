@@ -42,7 +42,7 @@ LDFLAGS := -mcpu=68000 -msoft-float -mcrt=nix13 -s
 
 SRCS := main.c screen.c sprite.c night.c trail.c who.c fetch.c json.c geo.c \
         map_data.c region.c region_data.c config.c home.c sound.c twinkle.c \
-        ufo.c ufo_path.c
+        ufo.c ufo_path.c help.c
 OBJS := $(SRCS:%.c=$(BUILD)/obj/%.o)
 
 ICONS := icons/ISSTracker.info icons/Disk.info icons/ReadMe.info

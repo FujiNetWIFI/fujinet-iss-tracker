@@ -35,6 +35,7 @@ by for a look around. Keys (also in the menu):
    V        viewing circle on/off
    M        sound on/off
    B        screen saver (any key or click returns)
+   H        help: these keys and the current settings
    Q, Esc   quit (or click the close gadget)
 
 After 10 idle minutes the screen saver starts by itself.

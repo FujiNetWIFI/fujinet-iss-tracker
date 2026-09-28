@@ -24,6 +24,7 @@
 #include "config.h"
 #include "fetch.h"
 #include "geo.h"
+#include "help.h"
 #include "home.h"
 #include "map_data.h"
 #include "region.h"
@@ -89,12 +90,13 @@ static int ufo_countdown;
 /* ---- Menus (Intuition 1.3 structures) ---------------------------------- */
 
 enum { M_REFRESH, M_WHO, M_WALK, M_UFO, M_TRAIL, M_NIGHT, M_CIRCLE, M_SOUND,
-       M_SAVER, M_ABOUT, M_QUIT };
+       M_SAVER, M_HELP, M_ABOUT, M_QUIT };
 
 #define ITEM_W (LOWCHECKWIDTH + 15 * 8 + LOWCOMMWIDTH + 4)
 #define ITEM_H 10
 
 static struct IntuiText t_quit    = { 0, 1, JAM2, LOWCHECKWIDTH, 1, 0, (UBYTE *)"Quit", 0 };
+static struct IntuiText t_help    = { 0, 1, JAM2, LOWCHECKWIDTH, 1, 0, (UBYTE *)"Help...", 0 };
 static struct IntuiText t_about   = { 0, 1, JAM2, LOWCHECKWIDTH, 1, 0, (UBYTE *)"About...", 0 };
 static struct IntuiText t_saver   = { 0, 1, JAM2, LOWCHECKWIDTH, 1, 0, (UBYTE *)"Screen saver", 0 };
 static struct IntuiText t_sound   = { 0, 1, JAM2, LOWCHECKWIDTH, 1, 0, (UBYTE *)"Sound", 0 };
@@ -112,9 +114,10 @@ static struct IntuiText t_refresh = { 0, 1, JAM2, LOWCHECKWIDTH, 1, 0, (UBYTE *)
       0, (APTR)&text, 0, key, 0, 0 }
 #define TOGGLE (CHECKIT | MENUTOGGLE | CHECKED)
 
-static struct MenuItem i_quit = ITEM(0, 10, 0, t_quit, 'Q');
-static struct MenuItem i_about = ITEM(&i_quit, 9, 0, t_about, '?');
-static struct MenuItem i_saver = ITEM(&i_about, 8, 0, t_saver, 'B');
+static struct MenuItem i_quit = ITEM(0, 11, 0, t_quit, 'Q');
+static struct MenuItem i_about = ITEM(&i_quit, 10, 0, t_about, '?');
+static struct MenuItem i_help = ITEM(&i_about, 9, 0, t_help, 'H');
+static struct MenuItem i_saver = ITEM(&i_help, 8, 0, t_saver, 'B');
 static struct MenuItem i_sound = ITEM(&i_saver, 7, TOGGLE, t_sound, 'M');
 static struct MenuItem i_circle = ITEM(&i_sound, 6, TOGGLE, t_circle, 'V');
 static struct MenuItem i_night = ITEM(&i_circle, 5, TOGGLE, t_night, 'N');
@@ -374,6 +377,16 @@ static void crew(void)
         status("", PEN_LABEL);
 }
 
+static void help(void)
+{
+    sprite_suspend(1);
+    footprint_hide();
+    help_show(show_trail, show_night, show_circle,
+              (i_sound.Flags & CHECKED) != 0);
+    sprite_suspend(0);
+    show_live();
+}
+
 static void spacewalk(void)
 {
     if (sprite_spacewalk())
@@ -447,6 +460,9 @@ static int action(int what)
     case M_SAVER:
         saver(1);
         break;
+    case M_HELP:
+        help();
+        break;
     case M_ABOUT:
         about();
         break;
@@ -482,6 +498,8 @@ static int key(UWORD code)
         return action(M_SOUND);
     case 'b': case 'B':
         return action(M_SAVER);
+    case 'h': case 'H': case '?':
+        return action(M_HELP);
     case 'q': case 'Q': case 27:
         return 0;
     }
